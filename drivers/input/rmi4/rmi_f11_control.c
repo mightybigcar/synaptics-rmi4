@@ -23,7 +23,7 @@ struct f11_sensor_ctl_data {
 };
 
 struct f11_ctl_data {
-	struct rmi_function_dev *f11_dev;
+	struct rmi_function *f11_dev;
 	struct rmi_control_handler_data handler_data;
 	struct f11_sensor_ctl_data sensor_data[F11_MAX_NUM_OF_SENSORS];
 };
@@ -156,7 +156,7 @@ static ssize_t delta_threshold_read(struct file *filp, char __user *buffer,
 	int retval;
 	char *local_buf;
 	struct sensor_debugfs_data *data = filp->private_data;
-	struct f11_data *f11 = data->sensor->fn_dev->data;
+	struct f11_data *f11 = data->sensor->fn->data;
 	struct f11_2d_ctrl *ctrl = &f11->dev_controls;
 
 	if (data->done)
@@ -188,9 +188,9 @@ static ssize_t delta_threshold_write(struct file *filp,
 	u8 save_X, save_Y;
 	int rc;
 	struct sensor_debugfs_data *data = filp->private_data;
-	struct f11_data *f11 = data->sensor->fn_dev->data;
+	struct f11_data *f11 = data->sensor->fn->data;
 	struct f11_2d_ctrl *ctrl = &f11->dev_controls;
-	struct rmi_device *rmi_dev =  data->sensor->fn_dev->rmi_dev;
+	struct rmi_device *rmi_dev =  data->sensor->fn->rmi_dev;
 
 	local_buf = kcalloc(size, sizeof(u8), GFP_KERNEL);
 	if (!local_buf)
@@ -215,7 +215,7 @@ static ssize_t delta_threshold_write(struct file *filp,
 	rc = rmi_write_block(rmi_dev, ctrl->ctrl0_9_address,
 			ctrl->ctrl0_9, sizeof(*ctrl->ctrl0_9));
 	if (rc < 0) {
-		dev_warn(&data->sensor->fn_dev->dev,
+		dev_warn(&data->sensor->fn->dev,
 			"Failed to write to delta_threshold. Code: %d.\n",
 			rc);
 		ctrl->ctrl0_9->delta_x_threshold = save_X;
@@ -372,17 +372,17 @@ static void rmi_f11_setup_sensor_debugfs(struct f11_sensor_ctl_data *sensor_data
 	int retval = 0;
 	char fname[NAME_BUFFER_SIZE];
 	struct f11_2d_sensor *sensor = sensor_data->sensor;
-	struct rmi_function_dev *fn_dev = sensor->fn_dev;
+	struct rmi_function *fn = sensor->fn;
 	struct dentry *sensor_root;
 	struct dentry *entry;
 
-	if (!fn_dev->debugfs_root)
+	if (!fn->debugfs_root)
 		return;
 
 	snprintf(fname, NAME_BUFFER_SIZE, "input%u", sensor->sensor_index);
-	sensor_root = debugfs_create_dir(fname, fn_dev->debugfs_root);
+	sensor_root = debugfs_create_dir(fname, fn->debugfs_root);
 	if (!sensor_root) {
-		dev_warn(&fn_dev->dev,
+		dev_warn(&fn->dev,
 			 "Failed to create debugfs directory %s for sensor %d\n",
 			 fname, sensor->sensor_index);
 		return;
@@ -392,42 +392,42 @@ static void rmi_f11_setup_sensor_debugfs(struct f11_sensor_ctl_data *sensor_data
 	entry = debugfs_create_file(fname, RMI_RO_ATTR,
 				sensor_root, sensor, &maxPos_fops);
 	if (!entry)
-		dev_warn(&fn_dev->dev, "Failed to create debugfs %s.\n",
+		dev_warn(&fn->dev, "Failed to create debugfs %s.\n",
 			 fname);
 
 	retval = snprintf(fname, NAME_BUFFER_SIZE, "flip");
 	entry = debugfs_create_file(fname, RMI_RW_ATTR,
 				sensor_root, sensor, &flip_fops);
 	if (!entry)
-		dev_warn(&fn_dev->dev, "Failed to create debugfs %s.\n",
+		dev_warn(&fn->dev, "Failed to create debugfs %s.\n",
 			 fname);
 
 	retval = snprintf(fname, NAME_BUFFER_SIZE, "clip");
 	entry = debugfs_create_file(fname, RMI_RW_ATTR,
 				sensor_root, sensor, &clip_fops);
 	if (!entry)
-		dev_warn(&fn_dev->dev, "Failed to create debugfs %s.\n",
+		dev_warn(&fn->dev, "Failed to create debugfs %s.\n",
 			 fname);
 
 	retval = snprintf(fname, NAME_BUFFER_SIZE, "delta_threshold");
 	entry = debugfs_create_file(fname, RMI_RW_ATTR,
 				sensor_root, sensor, &delta_threshold_fops);
 	if (!entry)
-		dev_warn(&fn_dev->dev, "Failed to create debugfs %s.\n",
+		dev_warn(&fn->dev, "Failed to create debugfs %s.\n",
 			 fname);
 
 	retval = snprintf(fname, NAME_BUFFER_SIZE, "offset");
 	entry = debugfs_create_file(fname, RMI_RW_ATTR,
 				sensor_root, sensor, &offset_fops);
 	if (!entry)
-		dev_warn(&fn_dev->dev, "Failed to create debugfs %s.\n",
+		dev_warn(&fn->dev, "Failed to create debugfs %s.\n",
 			 fname);
 
 	retval = snprintf(fname, NAME_BUFFER_SIZE, "swap");
 	entry = debugfs_create_bool(fname, RMI_RW_ATTR,
 				sensor_root, &sensor->axis_align.swap_axes);
 	if (!entry)
-		dev_warn(&fn_dev->dev,
+		dev_warn(&fn->dev,
 			"Failed to create debugfs swap for sensor %d.\n",
 			 sensor->sensor_index);
 
@@ -435,7 +435,7 @@ static void rmi_f11_setup_sensor_debugfs(struct f11_sensor_ctl_data *sensor_data
 	entry = debugfs_create_bool(fname, RMI_RW_ATTR,
 				sensor_root, &sensor->type_a);
 	if (!entry)
-		dev_warn(&fn_dev->dev,
+		dev_warn(&fn->dev,
 			 "Failed to create debugfs type_a for sensor %d.\n",
 			 sensor->sensor_index);
 
@@ -444,20 +444,20 @@ static void rmi_f11_setup_sensor_debugfs(struct f11_sensor_ctl_data *sensor_data
 
 struct f11_debugfs_data {
 	loff_t pos;
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 };
 
 static int f11_open(struct inode *inodep, struct file *filp)
 {
 	struct f11_debugfs_data *data;
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 
-	fn_dev = inodep->i_private;
+	fn = inodep->i_private;
 	data = kzalloc(sizeof(struct f11_debugfs_data), GFP_KERNEL);
 	if (!data)
 		return -ENOMEM;
 
-	data->fn_dev = inodep->i_private;
+	data->fn = inodep->i_private;
 	filp->private_data = data;
 	return 0;
 }
@@ -481,12 +481,12 @@ static loff_t debug_seek(struct file *filp, loff_t offset, int whence)
 		new_pos = data->pos + offset;
 		break;
 	default:
-		dev_err(&data->fn_dev->dev, "Invalid whence of %d.\n", whence);
+		dev_err(&data->fn->dev, "Invalid whence of %d.\n", whence);
 		return -EINVAL;
 	}
 
 	if (new_pos < 0) {
-		dev_err(&data->fn_dev->dev, "Invalid position %d.\n", new_pos);
+		dev_err(&data->fn->dev, "Invalid position %d.\n", new_pos);
 		return -EINVAL;
 	}
 
@@ -497,15 +497,15 @@ static loff_t debug_seek(struct file *filp, loff_t offset, int whence)
 static ssize_t report_count_read(struct file *filp, char __user *buffer, size_t size,
 		    loff_t *offset) {
 	struct f11_debugfs_data *data = filp->private_data;
-	struct rmi_function_dev *fn_dev = data->fn_dev;
-	struct f11_data *f11 = fn_dev->data;
+	struct rmi_function *fn = data->fn;
+	struct f11_data *f11 = fn->data;
 	int retval;
 	char *local_buf;
 	int buf_len;
 	int new_pos = data->pos + *offset;
 
 	if (new_pos < 0) {
-		dev_err(&fn_dev->dev, "Invalid position %d.\n", new_pos);
+		dev_err(&fn->dev, "Invalid position %d.\n", new_pos);
 		return -EINVAL;
 	}
 
@@ -543,22 +543,22 @@ static const struct file_operations report_count_fops = {
 
 static int rmi_f11_setup_debugfs(struct f11_ctl_data *ctl_data)
 {
-	struct rmi_function_dev *fn_dev = ctl_data->f11_dev;
-	struct f11_data *f11 = fn_dev->data;
+	struct rmi_function *fn = ctl_data->f11_dev;
+	struct f11_data *f11 = fn->data;
 	struct dentry *entry;
 
-	if (!fn_dev->debugfs_root)
+	if (!fn->debugfs_root)
 		return -ENODEV;
 
 	entry = debugfs_create_u16("rezero_wait",
-		RMI_RW_ATTR, fn_dev->debugfs_root, &f11->rezero_wait_ms);
+		RMI_RW_ATTR, fn->debugfs_root, &f11->rezero_wait_ms);
 	if (!entry)
-		dev_warn(&fn_dev->dev, "Failed to create debugfs rezero_wait.\n");
+		dev_warn(&fn->dev, "Failed to create debugfs rezero_wait.\n");
 
 	entry = debugfs_create_file("report_count", RMI_RO_ATTR,
-				fn_dev->debugfs_root, fn_dev, &report_count_fops);
+				fn->debugfs_root, fn, &report_count_fops);
 	if (!entry || IS_ERR(entry))
-		dev_warn(&fn_dev->dev, "Failed to create debugfs report_count.\n");
+		dev_warn(&fn->dev, "Failed to create debugfs report_count.\n");
 
 	return 0;
 }
@@ -573,11 +573,11 @@ static ssize_t f11_rezero_store(struct device *dev,
 				     struct device_attribute *attr,
 				     const char *buf, size_t count)
 {
-	struct rmi_function_dev *fn_dev = NULL;
+	struct rmi_function *fn = NULL;
 	unsigned int rezero;
 	int retval = 0;
 
-	fn_dev = to_rmi_function_dev(dev);
+	fn = to_rmi_function(dev);
 
 	if (sscanf(buf, "%u", &rezero) != 1)
 		return -EINVAL;
@@ -591,8 +591,8 @@ static ssize_t f11_rezero_store(struct device *dev,
 			.rezero = true,
 		};
 
-		retval = rmi_write_block(fn_dev->rmi_dev,
-					fn_dev->fd.command_base_addr,
+		retval = rmi_write_block(fn->rmi_dev,
+					fn->fd.command_base_addr,
 					&commands, sizeof(commands));
 		if (retval < 0) {
 			dev_err(dev, "%s: failed to issue rezero command, error = %d.",
@@ -631,28 +631,28 @@ static int f11_ctl_cleanup(struct rmi_control_handler_data *hdata)
 
 static struct rmi_control_handler_data *f11_ctl_attach(struct device *dev, void *data)
 {
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct f11_data *f11_data;
 	struct f11_ctl_data *ctl_data;
 	int i;
 
-	fn_dev = to_rmi_function_dev(dev);
+	fn = to_rmi_function(dev);
 	dev_dbg(dev, "%s called.\n", __func__);
 
 	ctl_data = devm_kzalloc(dev, sizeof(struct f11_ctl_data), GFP_KERNEL);
 	if (!ctl_data)
 		return NULL;
-	ctl_data->f11_dev = fn_dev;
+	ctl_data->f11_dev = fn;
 
-	f11_data = fn_dev->data;
+	f11_data = fn->data;
 	/* Increase with one since number of sensors is zero based */
 	for (i = 0; i < (f11_data->dev_query.nbr_of_sensors + 1); i++) {
 		ctl_data->sensor_data[i].sensor = &f11_data->sensors[i];
 		rmi_f11_setup_sensor_debugfs(&ctl_data->sensor_data[i]);
 	}
 
-	if (sysfs_create_group(&fn_dev->dev.kobj, &fn11_attrs) < 0) {
-		dev_warn(&fn_dev->dev, "Failed to create query sysfs files.");
+	if (sysfs_create_group(&fn->dev.kobj, &fn11_attrs) < 0) {
+		dev_warn(&fn->dev, "Failed to create query sysfs files.");
 	}
 	rmi_f11_setup_debugfs(ctl_data);
 

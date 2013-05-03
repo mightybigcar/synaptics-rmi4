@@ -20,26 +20,26 @@
 #include "rmi_f01.h"
 
 struct f01_ctl_data {
-	struct rmi_function_dev *f01_dev;
+	struct rmi_function *f01_dev;
 	struct rmi_control_handler_data hdata;
 };
 
 #ifdef	CONFIG_RMI4_DEBUG
 struct f01_debugfs_data {
 	bool done;
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 };
 
 static int f01_debug_open(struct inode *inodep, struct file *filp)
 {
 	struct f01_debugfs_data *data;
-	struct rmi_function_dev *fn_dev = inodep->i_private;
+	struct rmi_function *fn = inodep->i_private;
 
 	data = kzalloc(sizeof(struct f01_debugfs_data), GFP_KERNEL);
 	if (!data)
 		return -ENOMEM;
 
-	data->fn_dev = fn_dev;
+	data->fn = fn;
 	filp->private_data = data;
 	return 0;
 }
@@ -58,7 +58,7 @@ static ssize_t interrupt_enable_read(struct file *filp, char __user *buffer,
 	char local_buf[size];
 	char *current_buf = local_buf;
 	struct f01_debugfs_data *data = filp->private_data;
-	struct f01_data *f01 = data->fn_dev->data;
+	struct f01_data *f01 = data->fn->data;
 
 	if (data->done)
 		return 0;
@@ -88,7 +88,7 @@ static ssize_t interrupt_enable_read(struct file *filp, char __user *buffer,
 			current_buf += len;
 			total_len += len;
 		} else {
-			dev_err(&data->fn_dev->dev, "Failed to build interrupt_enable buffer, code = %d.\n",
+			dev_err(&data->fn->dev, "Failed to build interrupt_enable buffer, code = %d.\n",
 						len);
 			return snprintf(local_buf, size, "unknown\n");
 		}
@@ -97,7 +97,7 @@ static ssize_t interrupt_enable_read(struct file *filp, char __user *buffer,
 	if (len > 0)
 		total_len += len;
 	else
-		dev_warn(&data->fn_dev->dev, "%s: Failed to append carriage return.\n",
+		dev_warn(&data->fn->dev, "%s: Failed to append carriage return.\n",
 			 __func__);
 
 	if (copy_to_user(buffer, local_buf, total_len))
@@ -115,7 +115,7 @@ static ssize_t interrupt_enable_write(struct file *filp,
 	int irq_count = 0;
 	int irq_reg = 0;
 	struct f01_debugfs_data *data = filp->private_data;
-	struct f01_data *f01 = data->fn_dev->data;
+	struct f01_data *f01 = data->fn->data;
 
 	retval = copy_from_user(buf, buffer, size);
 	if (retval)
@@ -135,7 +135,7 @@ static ssize_t interrupt_enable_write(struct file *filp,
 		result = sscanf(local_buf, "%u", &interrupt_enable);
 		if ((result != 1) ||
 			(interrupt_enable != 0 && interrupt_enable != 1)) {
-			dev_err(&data->fn_dev->dev, "Interrupt enable[%d] is not a valid value 0x%x.\n",
+			dev_err(&data->fn->dev, "Interrupt enable[%d] is not a valid value 0x%x.\n",
 				i, interrupt_enable);
 			return -EINVAL;
 		}
@@ -150,18 +150,18 @@ static ssize_t interrupt_enable_write(struct file *filp,
 
 	/* Make sure the irq count matches */
 	if (irq_count != f01->irq_count) {
-		dev_err(&data->fn_dev->dev, "Interrupt enable count of %d doesn't match device count of %d.\n",
+		dev_err(&data->fn->dev, "Interrupt enable count of %d doesn't match device count of %d.\n",
 			 irq_count, f01->irq_count);
 		return -EINVAL;
 	}
 
 	/* write back to the control register */
-	retval = rmi_write_block(data->fn_dev->rmi_dev,
+	retval = rmi_write_block(data->fn->rmi_dev,
 			f01->interrupt_enable_addr,
 			f01->device_control.interrupt_enable,
 			f01->num_of_irq_regs);
 	if (retval < 0) {
-		dev_err(&data->fn_dev->dev, "Could not write interrupt_enable mask to %#06x\n",
+		dev_err(&data->fn->dev, "Could not write interrupt_enable mask to %#06x\n",
 			f01->interrupt_enable_addr);
 		return retval;
 	}
@@ -179,31 +179,31 @@ static const struct file_operations interrupt_enable_fops = {
 
 static int rmi_f01_setup_debugfs(struct f01_ctl_data *ctl_data)
 {
-	struct rmi_function_dev *fn_dev = ctl_data->f01_dev;
+	struct rmi_function *fn = ctl_data->f01_dev;
 	struct dentry *entry;
 
-	if (!fn_dev->debugfs_root)
+	if (!fn->debugfs_root)
 		return -ENODEV;
 
 	entry = debugfs_create_file("interrupt_enable", RMI_RW_ATTR,
-			fn_dev->debugfs_root, fn_dev, &interrupt_enable_fops);
+			fn->debugfs_root, fn, &interrupt_enable_fops);
 	if (!entry)
-		dev_warn(&fn_dev->dev,
+		dev_warn(&fn->dev,
 			 "Failed to create debugfs interrupt_enable.\n");
 
 	return 0;
 }
 
 #else
-#define rmi_f01_setup_debugfs(fn_dev) 0
+#define rmi_f01_setup_debugfs(fn) 0
 #endif
 
 static ssize_t rmi_fn_01_productinfo_show(struct device *dev,
 					  struct device_attribute *attr,
 					  char *buf)
 {
-	struct rmi_function_dev *fn_dev = to_rmi_function_dev(dev);
-	struct f01_data *data = fn_dev->data;
+	struct rmi_function *fn = to_rmi_function(dev);
+	struct f01_data *data = fn->data;
 
 	return snprintf(buf, PAGE_SIZE, "%#06x\n",
 			data->properties.productinfo);
@@ -213,8 +213,8 @@ static ssize_t rmi_fn_01_productid_show(struct device *dev,
 					struct device_attribute *attr,
 					char *buf)
 {
-	struct rmi_function_dev *fn_dev = to_rmi_function_dev(dev);
-	struct f01_data *data = fn_dev->data;
+	struct rmi_function *fn = to_rmi_function(dev);
+	struct f01_data *data = fn->data;
 
 	return snprintf(buf, PAGE_SIZE, "%s\n", data->product_id);
 }
@@ -223,8 +223,8 @@ static ssize_t rmi_fn_01_manufacturer_show(struct device *dev,
 					   struct device_attribute *attr,
 					   char *buf)
 {
-	struct rmi_function_dev *fn_dev = to_rmi_function_dev(dev);
-	struct f01_data *data = fn_dev->data;
+	struct rmi_function *fn = to_rmi_function(dev);
+	struct f01_data *data = fn->data;
 
 	return snprintf(buf, PAGE_SIZE, "0x%02x\n",
 			data->properties.manufacturer_id);
@@ -234,8 +234,8 @@ static ssize_t rmi_fn_01_serialization_show(struct device *dev,
 				       struct device_attribute *attr,
 				       char *buf)
 {
-	struct rmi_function_dev *fn_dev = to_rmi_function_dev(dev);
-	struct f01_data *data = fn_dev->data;
+	struct rmi_function *fn = to_rmi_function(dev);
+	struct f01_data *data = fn->data;
 	int i, n, count = 0;
 	char *local_buf = buf;
 
@@ -252,7 +252,7 @@ static ssize_t rmi_fn_01_reset_store(struct device *dev,
 				     struct device_attribute *attr,
 				     const char *buf, size_t count)
 {
-	struct rmi_function_dev *fn_dev = to_rmi_function_dev(dev);
+	struct rmi_function *fn = to_rmi_function(dev);
 	unsigned int reset;
 	int error = 0;
 
@@ -266,8 +266,8 @@ static ssize_t rmi_fn_01_reset_store(struct device *dev,
 		/* Command register always reads as 0, so just use a local. */
 		u8 command = RMI_F01_CMD_DEVICE_RESET;
 
-		error = rmi_write_block(fn_dev->rmi_dev,
-					 fn_dev->fd.command_base_addr,
+		error = rmi_write_block(fn->rmi_dev,
+					 fn->fd.command_base_addr,
 					 &command, sizeof(command));
 		if (error < 0) {
 			dev_err(dev, "Failed to issue reset command, code = %d.",
@@ -283,8 +283,8 @@ static ssize_t rmi_fn_01_sleepmode_show(struct device *dev,
 					struct device_attribute *attr,
 					char *buf)
 {
-	struct rmi_function_dev *fn_dev = to_rmi_function_dev(dev);
-	struct f01_data *data = fn_dev->data;
+	struct rmi_function *fn = to_rmi_function(dev);
+	struct f01_data *data = fn->data;
 	unsigned int value = data->device_control.ctrl0 &
 					RMI_F01_CTRL0_SLEEP_MODE_MASK;
 
@@ -295,8 +295,8 @@ static ssize_t rmi_fn_01_sleepmode_store(struct device *dev,
 					 struct device_attribute *attr,
 					 const char *buf, size_t count)
 {
-	struct rmi_function_dev *fn_dev = to_rmi_function_dev(dev);
-	struct f01_data *data = fn_dev->data;
+	struct rmi_function *fn = to_rmi_function(dev);
+	struct f01_data *data = fn->data;
 	unsigned long new_value;
 	int retval;
 
@@ -315,7 +315,7 @@ static ssize_t rmi_fn_01_sleepmode_store(struct device *dev,
 	data->device_control.ctrl0 &= ~RMI_F01_CTRL0_SLEEP_MODE_MASK;
 	data->device_control.ctrl0 |= new_value;
 
-	retval = rmi_write_block(fn_dev->rmi_dev, fn_dev->fd.control_base_addr,
+	retval = rmi_write_block(fn->rmi_dev, fn->fd.control_base_addr,
 				 &data->device_control.ctrl0,
 			  sizeof(data->device_control.ctrl0));
 	if (retval >= 0)
@@ -330,8 +330,8 @@ static ssize_t rmi_fn_01_sleepmode_store(struct device *dev,
 static ssize_t rmi_fn_01_nosleep_show(struct device *dev,
 				      struct device_attribute *attr, char *buf)
 {
-	struct rmi_function_dev *fn_dev = to_rmi_function_dev(dev);
-	struct f01_data *data = fn_dev->data;
+	struct rmi_function *fn = to_rmi_function(dev);
+	struct f01_data *data = fn->data;
 	unsigned int value = !!(data->device_control.ctrl0 &
 					RMI_F01_CRTL0_NOSLEEP_BIT);
 
@@ -342,8 +342,8 @@ static ssize_t rmi_fn_01_nosleep_store(struct device *dev,
 				       struct device_attribute *attr,
 				       const char *buf, size_t count)
 {
-	struct rmi_function_dev *fn_dev = to_rmi_function_dev(dev);
-	struct f01_data *data = fn_dev->data;
+	struct rmi_function *fn = to_rmi_function(dev);
+	struct f01_data *data = fn->data;
 	unsigned long new_value;
 	int retval;
 
@@ -362,7 +362,7 @@ static ssize_t rmi_fn_01_nosleep_store(struct device *dev,
 	else
 		data->device_control.ctrl0 &= ~RMI_F01_CRTL0_NOSLEEP_BIT;
 
-	retval = rmi_write_block(fn_dev->rmi_dev, fn_dev->fd.control_base_addr,
+	retval = rmi_write_block(fn->rmi_dev, fn->fd.control_base_addr,
 				 &data->device_control.ctrl0,
 			  sizeof(data->device_control.ctrl0));
 	if (retval >= 0)
@@ -377,8 +377,8 @@ static ssize_t rmi_fn_01_nosleep_store(struct device *dev,
 static ssize_t rmi_fn_01_chargerinput_show(struct device *dev,
 				      struct device_attribute *attr, char *buf)
 {
-	struct rmi_function_dev *fn_dev = to_rmi_function_dev(dev);
-	struct f01_data *data = fn_dev->data;
+	struct rmi_function *fn = to_rmi_function(dev);
+	struct f01_data *data = fn->data;
 	unsigned int value = !!(data->device_control.ctrl0 &
 	RMI_F01_CRTL0_CHARGER_BIT);
 
@@ -389,8 +389,8 @@ static ssize_t rmi_fn_01_chargerinput_store(struct device *dev,
 				       struct device_attribute *attr,
 				       const char *buf, size_t count)
 {
-	struct rmi_function_dev *fn_dev = to_rmi_function_dev(dev);
-	struct f01_data *data = fn_dev->data;
+	struct rmi_function *fn = to_rmi_function(dev);
+	struct f01_data *data = fn->data;
 	unsigned long new_value;
 	int retval;
 
@@ -409,7 +409,7 @@ static ssize_t rmi_fn_01_chargerinput_store(struct device *dev,
 	else
 		data->device_control.ctrl0 &= ~RMI_F01_CRTL0_CHARGER_BIT;
 
-	retval = rmi_write_block(fn_dev->rmi_dev, fn_dev->fd.control_base_addr,
+	retval = rmi_write_block(fn->rmi_dev, fn->fd.control_base_addr,
 				 &data->device_control.ctrl0,
 			  sizeof(data->device_control.ctrl0));
 	if (retval >= 0)
@@ -424,8 +424,8 @@ static ssize_t rmi_fn_01_chargerinput_store(struct device *dev,
 static ssize_t rmi_fn_01_reportrate_show(struct device *dev,
 				      struct device_attribute *attr, char *buf)
 {
-	struct rmi_function_dev *fn_dev = to_rmi_function_dev(dev);
-	struct f01_data *data = fn_dev->data;
+	struct rmi_function *fn = to_rmi_function(dev);
+	struct f01_data *data = fn->data;
 	int value = !!(data->device_control.ctrl0 &
 					RMI_F01_CRTL0_REPORTRATE_BIT);
 
@@ -436,8 +436,8 @@ static ssize_t rmi_fn_01_reportrate_store(struct device *dev,
 				       struct device_attribute *attr,
 				       const char *buf, size_t count)
 {
-	struct rmi_function_dev *fn_dev = to_rmi_function_dev(dev);
-	struct f01_data *data = fn_dev->data;
+	struct rmi_function *fn = to_rmi_function(dev);
+	struct f01_data *data = fn->data;
 	unsigned long new_value;
 	int retval;
 
@@ -456,7 +456,7 @@ static ssize_t rmi_fn_01_reportrate_store(struct device *dev,
 	else
 		data->device_control.ctrl0 &= ~RMI_F01_CRTL0_REPORTRATE_BIT;
 
-	retval = rmi_write_block(fn_dev->rmi_dev, fn_dev->fd.control_base_addr,
+	retval = rmi_write_block(fn->rmi_dev, fn->fd.control_base_addr,
 				 &data->device_control.ctrl0,
 			  sizeof(data->device_control.ctrl0));
 	if (retval >= 0)
@@ -471,8 +471,8 @@ static ssize_t rmi_fn_01_reportrate_store(struct device *dev,
 static ssize_t rmi_fn_01_interrupt_enable_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
-	struct rmi_function_dev *fn_dev = to_rmi_function_dev(dev);
-	struct f01_data *data = fn_dev->data;
+	struct rmi_function *fn = to_rmi_function(dev);
+	struct f01_data *data = fn->data;
 	int i, len, total_len = 0;
 	char *current_buf = buf;
 
@@ -517,8 +517,8 @@ static ssize_t rmi_fn_01_interrupt_enable_show(struct device *dev,
 static ssize_t rmi_fn_01_doze_interval_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
-	struct rmi_function_dev *fn_dev = to_rmi_function_dev(dev);
-	struct f01_data *data = fn_dev->data;
+	struct rmi_function *fn = to_rmi_function(dev);
+	struct f01_data *data = fn->data;
 
 	return snprintf(buf, PAGE_SIZE, "%d\n",
 			data->device_control.doze_interval);
@@ -529,8 +529,8 @@ static ssize_t rmi_fn_01_doze_interval_store(struct device *dev,
 					  struct device_attribute *attr,
 					  const char *buf, size_t count)
 {
-	struct rmi_function_dev *fn_dev = to_rmi_function_dev(dev);
-	struct f01_data *data = fn_dev->data;
+	struct rmi_function *fn = to_rmi_function(dev);
+	struct f01_data *data = fn->data;
 	unsigned long new_value;
 	int retval;
 	u16 ctrl_addr;
@@ -542,12 +542,12 @@ static ssize_t rmi_fn_01_doze_interval_store(struct device *dev,
 	}
 
 	data->device_control.doze_interval = new_value;
-	ctrl_addr = fn_dev->fd.control_base_addr + sizeof(u8) +
+	ctrl_addr = fn->fd.control_base_addr + sizeof(u8) +
 			(sizeof(u8)*(data->num_of_irq_regs));
 	dev_dbg(dev, "doze_interval store address %x, value %d",
 		ctrl_addr, data->device_control.doze_interval);
 
-	retval = rmi_write_block(fn_dev->rmi_dev, data->doze_interval_addr,
+	retval = rmi_write_block(fn->rmi_dev, data->doze_interval_addr,
 			&data->device_control.doze_interval,
 			sizeof(u8));
 	if (retval >= 0)
@@ -562,8 +562,8 @@ static ssize_t rmi_fn_01_wakeup_threshold_show(struct device *dev,
 					 struct device_attribute *attr,
 					 char *buf)
 {
-	struct rmi_function_dev *fn_dev = to_rmi_function_dev(dev);
-	struct f01_data *data = fn_dev->data;
+	struct rmi_function *fn = to_rmi_function(dev);
+	struct f01_data *data = fn->data;
 
 	return snprintf(buf, PAGE_SIZE, "%d\n",
 			data->device_control.wakeup_threshold);
@@ -573,8 +573,8 @@ static ssize_t rmi_fn_01_wakeup_threshold_store(struct device *dev,
 					  struct device_attribute *attr,
 					  const char *buf, size_t count)
 {
-	struct rmi_function_dev *fn_dev = to_rmi_function_dev(dev);
-	struct f01_data *data = fn_dev->data;
+	struct rmi_function *fn = to_rmi_function(dev);
+	struct f01_data *data = fn->data;
 	unsigned long new_value;
 	int retval;
 
@@ -585,7 +585,7 @@ static ssize_t rmi_fn_01_wakeup_threshold_store(struct device *dev,
 	}
 
 	data->device_control.doze_interval = new_value;
-	retval = rmi_write_block(fn_dev->rmi_dev, data->wakeup_threshold_addr,
+	retval = rmi_write_block(fn->rmi_dev, data->wakeup_threshold_addr,
 			&data->device_control.wakeup_threshold,
 			sizeof(u8));
 	if (retval >= 0)
@@ -600,8 +600,8 @@ static ssize_t rmi_fn_01_doze_holdoff_show(struct device *dev,
 					 struct device_attribute *attr,
 					 char *buf)
 {
-	struct rmi_function_dev *fn_dev = to_rmi_function_dev(dev);
-	struct f01_data *data = fn_dev->data;
+	struct rmi_function *fn = to_rmi_function(dev);
+	struct f01_data *data = fn->data;
 
 	return snprintf(buf, PAGE_SIZE, "%d\n",
 			data->device_control.doze_holdoff);
@@ -612,8 +612,8 @@ static ssize_t rmi_fn_01_doze_holdoff_store(struct device *dev,
 					  struct device_attribute *attr,
 					  const char *buf, size_t count)
 {
-	struct rmi_function_dev *fn_dev = to_rmi_function_dev(dev);
-	struct f01_data *data = fn_dev->data;
+	struct rmi_function *fn = to_rmi_function(dev);
+	struct f01_data *data = fn->data;
 	unsigned long new_value;
 	int retval;
 
@@ -624,7 +624,7 @@ static ssize_t rmi_fn_01_doze_holdoff_store(struct device *dev,
 	}
 
 	data->device_control.doze_interval = new_value;
-	retval = rmi_write_block(fn_dev->rmi_dev, data->doze_holdoff_addr,
+	retval = rmi_write_block(fn->rmi_dev, data->doze_holdoff_addr,
 			&data->device_control.doze_holdoff,
 			sizeof(u8));
 	if (retval >= 0)
@@ -638,8 +638,8 @@ static ssize_t rmi_fn_01_doze_holdoff_store(struct device *dev,
 static ssize_t rmi_fn_01_configured_show(struct device *dev,
 				      struct device_attribute *attr, char *buf)
 {
-	struct rmi_function_dev *fn_dev = to_rmi_function_dev(dev);
-	struct f01_data *data = fn_dev->data;
+	struct rmi_function *fn = to_rmi_function(dev);
+	struct f01_data *data = fn->data;
 	unsigned int value = !!(data->device_control.ctrl0 &
 					RMI_F01_CRTL0_CONFIGURED_BIT);
 
@@ -649,8 +649,8 @@ static ssize_t rmi_fn_01_configured_show(struct device *dev,
 static ssize_t rmi_fn_01_unconfigured_show(struct device *dev,
 				      struct device_attribute *attr, char *buf)
 {
-	struct rmi_function_dev *fn_dev = to_rmi_function_dev(dev);
-	struct f01_data *data = fn_dev->data;
+	struct rmi_function *fn = to_rmi_function(dev);
+	struct f01_data *data = fn->data;
 
 	return snprintf(buf, PAGE_SIZE, "%d\n",
 			RMI_F01_STATUS_UNCONFIGURED(data->device_status));
@@ -660,9 +660,9 @@ static ssize_t rmi_fn_01_flashprog_show(struct device *dev,
 				      struct device_attribute *attr, char *buf)
 {
 	struct f01_data *data = NULL;
-	struct rmi_function_dev *fn_dev = to_rmi_function_dev(dev);
+	struct rmi_function *fn = to_rmi_function(dev);
 
-	data = fn_dev->data;
+	data = fn->data;
 
 	return snprintf(buf, PAGE_SIZE, "%d\n",
 			RMI_F01_STATUS_BOOTLOADER(data->device_status));
@@ -672,9 +672,9 @@ static ssize_t rmi_fn_01_statuscode_show(struct device *dev,
 				      struct device_attribute *attr, char *buf)
 {
 	struct f01_data *data = NULL;
-	struct rmi_function_dev *fn_dev = to_rmi_function_dev(dev);
+	struct rmi_function *fn = to_rmi_function(dev);
 
-	data = fn_dev->data;
+	data = fn->data;
 
 	return snprintf(buf, PAGE_SIZE, "0x%02x\n",
 			RMI_F01_STATUS_CODE(data->device_status));
@@ -771,98 +771,98 @@ static struct attribute *attrs[] = {
 static struct attribute_group fn01_attrs = GROUP(attrs);
 
 
-static int rmi_f01_create_sysfs(struct rmi_function_dev *fn_dev)
+static int rmi_f01_create_sysfs(struct rmi_function *fn)
 {
 	int retval = 0;
-	struct f01_data *data = fn_dev->data;
-	dev_dbg(&fn_dev->dev, "Creating sysfs files.");
-	if (sysfs_create_group(&fn_dev->dev.kobj, &fn01_attrs) < 0) {
-		dev_err(&fn_dev->dev, "Failed to create query sysfs files.");
+	struct f01_data *data = fn->data;
+	dev_dbg(&fn->dev, "Creating sysfs files.");
+	if (sysfs_create_group(&fn->dev.kobj, &fn01_attrs) < 0) {
+		dev_err(&fn->dev, "Failed to create query sysfs files.");
 		return -ENODEV;
 	}
 	if (data->properties.has_lts) {
-		retval = sysfs_create_file(&fn_dev->dev.kobj,
+		retval = sysfs_create_file(&fn->dev.kobj,
 			&dev_attr_doze_interval.attr);
 		if (retval < 0) {
-			dev_err(&fn_dev->dev, "Failed to create sysfs file for doze internal.");
+			dev_err(&fn->dev, "Failed to create sysfs file for doze internal.");
 			goto err_remove_sysfs_group;
 		}
 	}
 	if (data->properties.has_adjustable_doze) {
-		retval = sysfs_create_file(&fn_dev->dev.kobj,
+		retval = sysfs_create_file(&fn->dev.kobj,
 			&dev_attr_wakeup_threshold.attr);
 		if (retval < 0) {
-			dev_err(&fn_dev->dev, "Failed to create sysfs file for wakeup threshold.");
+			dev_err(&fn->dev, "Failed to create sysfs file for wakeup threshold.");
 			goto err_remove_sysfs_doze_interval;
 		}
 	}
 	if (data->properties.has_adjustable_doze_holdoff) {
-		retval = sysfs_create_file(&fn_dev->dev.kobj,
+		retval = sysfs_create_file(&fn->dev.kobj,
 			&dev_attr_doze_holdoff.attr);
 		if (retval < 0) {
-			dev_err(&fn_dev->dev, "Failed to create sysfs file for doze holdoff.");
+			dev_err(&fn->dev, "Failed to create sysfs file for doze holdoff.");
 			goto err_remove_sysfs_wakeup_threshold;
 		}
 	}
 	return 0;
 
 err_remove_sysfs_wakeup_threshold:
-	sysfs_remove_file(&fn_dev->dev.kobj, &dev_attr_wakeup_threshold.attr);
+	sysfs_remove_file(&fn->dev.kobj, &dev_attr_wakeup_threshold.attr);
 
 err_remove_sysfs_doze_interval:
-	sysfs_remove_file(&fn_dev->dev.kobj, &dev_attr_doze_interval.attr);
+	sysfs_remove_file(&fn->dev.kobj, &dev_attr_doze_interval.attr);
 
 err_remove_sysfs_group:
-	sysfs_remove_group(&fn_dev->dev.kobj, &fn01_attrs);
+	sysfs_remove_group(&fn->dev.kobj, &fn01_attrs);
 	return retval;
 }
 
 static int f01_ctl_cleanup(struct rmi_control_handler_data *hdata)
 {
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct f01_ctl_data *ctl_data;
 	struct f01_data *fn_data;
 
 	ctl_data = container_of(hdata, struct f01_ctl_data, hdata);
-	fn_dev = ctl_data->f01_dev;
+	fn = ctl_data->f01_dev;
 
-	debugfs_remove_recursive(fn_dev->debugfs_root);
+	debugfs_remove_recursive(fn->debugfs_root);
 
-	sysfs_remove_group(&fn_dev->dev.kobj, &fn01_attrs);
+	sysfs_remove_group(&fn->dev.kobj, &fn01_attrs);
 
-	fn_data = fn_dev->data;
+	fn_data = fn->data;
 
 	if (fn_data->properties.has_lts)
-		sysfs_remove_file(&fn_dev->dev.kobj,
+		sysfs_remove_file(&fn->dev.kobj,
 				  &dev_attr_doze_interval.attr);
 
 	if (fn_data->properties.has_adjustable_doze)
-		sysfs_remove_file(&fn_dev->dev.kobj,
+		sysfs_remove_file(&fn->dev.kobj,
 				  &dev_attr_wakeup_threshold.attr);
 
 	if (fn_data->properties.has_adjustable_doze_holdoff)
-		sysfs_remove_file(&fn_dev->dev.kobj,
+		sysfs_remove_file(&fn->dev.kobj,
 				  &dev_attr_doze_holdoff.attr);
 
-	devm_kfree(&fn_dev->dev, ctl_data);
+	devm_kfree(&fn->dev, ctl_data);
 
 	return 0;
 }
 
 static struct rmi_control_handler_data *f01_ctl_attach(struct device *dev, void *data)
 {
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct f01_ctl_data *ctl_data;
 	int retval;
 
-	fn_dev = to_rmi_function_dev(dev);
+	fn = to_rmi_function(dev);
 
 	ctl_data = devm_kzalloc(dev, sizeof(struct f01_ctl_data), GFP_KERNEL);
 	if (!ctl_data)
 		return NULL;
-	ctl_data->f01_dev = fn_dev;
+	ctl_data->f01_dev = fn;
 
-	retval = rmi_f01_create_sysfs(fn_dev);
+	retval = rmi_f01_create_sysfs(fn);
 	if (retval)
 		dev_warn(dev, "Failed to create F01 sysfs structures.\n");
 

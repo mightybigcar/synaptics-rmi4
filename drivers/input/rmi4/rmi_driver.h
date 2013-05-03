@@ -71,10 +71,10 @@ static DEVICE_ATTR(propname, RMI_RW_ATTR,\
 #define simple_show_union_struct(regtype, propname, fmt)\
 static ssize_t tricat(rmi_fn_, FNUM, _##propname##_show)(struct device *dev,\
 				struct device_attribute *attr, char *buf) {\
-	struct rmi_function_dev *fc;\
+	struct rmi_function *fc;\
 	struct FUNCTION_DATA *data;\
 \
-	fc = to_rmi_function_dev(dev);\
+	fc = to_rmi_function(dev);\
 	data = fc->data;\
 \
 	return snprintf(buf, PAGE_SIZE, fmt,\
@@ -84,10 +84,10 @@ static ssize_t tricat(rmi_fn_, FNUM, _##propname##_show)(struct device *dev,\
 #define simple_show_union_struct2(regtype, reg_group, propname, fmt)\
 static ssize_t tricat(rmi_fn_, FNUM, _##propname##_show)(struct device *dev,\
 				struct device_attribute *attr, char *buf) {\
-	struct rmi_function_dev *fc;\
+	struct rmi_function *fc;\
 	struct FUNCTION_DATA *data;\
 \
-	fc = to_rmi_function_dev(dev);\
+	fc = to_rmi_function(dev);\
 	data = fc->data;\
 \
 	return snprintf(buf, PAGE_SIZE, fmt,\
@@ -99,11 +99,11 @@ static ssize_t tricat(rmi_fn_, FNUM, _##propname##_show)(\
 					struct device *dev,\
 					struct device_attribute *attr,\
 					char *buf) {\
-	struct rmi_function_dev *fc;\
+	struct rmi_function *fc;\
 	struct FUNCTION_DATA *data;\
 	int result;\
 \
-	fc = to_rmi_function_dev(dev);\
+	fc = to_rmi_function(dev);\
 	data = fc->data;\
 \
 	mutex_lock(&data->regtype##_mutex);\
@@ -132,10 +132,10 @@ static ssize_t tricat(rmi_fn_, FNUM, _##propname##_store)(\
 	int result;\
 	unsigned long val;\
 	unsigned long old_val;\
-	struct rmi_function_dev *fc;\
+	struct rmi_function *fc;\
 	struct FUNCTION_DATA *data;\
 \
-	fc = to_rmi_function_dev(dev);\
+	fc = to_rmi_function(dev);\
 	data = fc->data;\
 \
 	/* need to convert the string data to an actual value */\
@@ -191,14 +191,14 @@ static ssize_t tricat(rmi_fn_, FNUM, _##propname##_store)(\
 static ssize_t tricat(rmi_fn_, FNUM, _##propname##_show)(struct device *dev,\
 					struct device_attribute *attr,\
 					char *buf) {\
-	struct rmi_function_dev *fc;\
+	struct rmi_function *fc;\
 	struct FUNCTION_DATA *data;\
 	int reg_length;\
 	int result, size = 0;\
 	char *temp;\
 	int i;\
 \
-	fc = to_rmi_function_dev(dev);\
+	fc = to_rmi_function(dev);\
 	data = fc->data;\
 	mutex_lock(&data->regtype##_mutex);\
 \
@@ -238,7 +238,7 @@ show_repeated_union_struct(regtype, reg_group, propname, fmt)\
 static ssize_t tricat(rmi_fn_, FNUM, _##propname##_store)(struct device *dev,\
 				   struct device_attribute *attr,\
 				   const char *buf, size_t count) {\
-	struct rmi_function_dev *fc;\
+	struct rmi_function *fc;\
 	struct FUNCTION_DATA *data;\
 	int reg_length;\
 	int result;\
@@ -246,7 +246,7 @@ static ssize_t tricat(rmi_fn_, FNUM, _##propname##_store)(struct device *dev,\
 	int i;\
 	unsigned int newval;\
 \
-	fc = to_rmi_function_dev(dev);\
+	fc = to_rmi_function(dev);\
 	data = fc->data;\
 	mutex_lock(&data->regtype##_mutex);\
 \
@@ -350,7 +350,7 @@ struct rmi_driver_data {
 	struct list_head function_list;
 	struct rmi_device *rmi_dev;
 
-	struct rmi_function_dev *f01_dev;
+	struct rmi_function *f01_dev;
 	bool f01_bootloader_mode;
 
 	u32 attn_count;

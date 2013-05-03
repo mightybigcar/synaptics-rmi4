@@ -51,8 +51,8 @@ static int rmi_ctl_attach(struct device *dev, void *data)
 		return 0;
 
 	if (dev->type == &rmi_function_type) {
-		struct rmi_function_dev *fn_dev = to_rmi_function_dev(dev);
-		if (fn_dev->fd.function_number != handler->function_id)
+		struct rmi_function *fn = to_rmi_function(dev);
+		if (fn->fd.function_number != handler->function_id)
 			return 0;
 	}
 

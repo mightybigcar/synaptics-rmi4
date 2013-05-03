@@ -754,7 +754,7 @@ struct f11_2d_sensor {
 	enum rmi_f11_sensor_type sensor_type;
 	struct input_dev *input;
 	struct input_dev *mouse_input;
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	char input_phys[NAME_BUFFER_SIZE];
 	char input_phys_mouse[NAME_BUFFER_SIZE];
 };

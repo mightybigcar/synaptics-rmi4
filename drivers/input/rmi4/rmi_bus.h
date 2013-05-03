@@ -48,7 +48,7 @@ extern struct device_type rmi_sensor_type;
 #define RMI_WO_ATTR S_IWUGO
 
 /**
- * struct rmi_function_dev - represents an a particular RMI4 function on a given
+ * struct rmi_function - represents an a particular RMI4 function on a given
  * RMI4 sensor.
  *
  * @fd: The function descriptor of the RMI function
@@ -65,7 +65,7 @@ extern struct device_type rmi_sensor_type;
  * @debugfs_root: used during debugging
  *
  */
-struct rmi_function_dev {
+struct rmi_function {
 
 	struct rmi_function_descriptor fd;
 	struct rmi_device *rmi_dev;
@@ -79,8 +79,8 @@ struct rmi_function_dev {
 	struct dentry *debugfs_root;
 };
 
-#define to_rmi_function_dev(d) \
-	container_of(d, struct rmi_function_dev, dev)
+#define to_rmi_function(d) \
+	container_of(d, struct rmi_function, dev)
 
 /**
  * struct rmi_function_driver - driver routines for a particular RMI function.
@@ -107,18 +107,18 @@ struct rmi_function_driver {
 	struct device_driver driver;
 
 	u8 func;
-	int (*probe)(struct rmi_function_dev *fc);
-	int (*remove)(struct rmi_function_dev *fc);
-	int (*config)(struct rmi_function_dev *fc);
-	int (*reset)(struct rmi_function_dev *fc);
-	int (*attention)(struct rmi_function_dev *fc,
+	int (*probe)(struct rmi_function *fc);
+	int (*remove)(struct rmi_function *fc);
+	int (*config)(struct rmi_function *fc);
+	int (*reset)(struct rmi_function *fc);
+	int (*attention)(struct rmi_function *fc,
 			 unsigned long *irq_bits);
 #ifdef CONFIG_PM
-	int (*suspend)(struct rmi_function_dev *fc);
-	int (*resume)(struct rmi_function_dev *fc);
+	int (*suspend)(struct rmi_function *fc);
+	int (*resume)(struct rmi_function *fc);
 #if defined(CONFIG_HAS_EARLYSUSPEND)
-	int (*early_suspend)(struct rmi_function_dev *fc);
-	int (*late_resume)(struct rmi_function_dev *fc);
+	int (*early_suspend)(struct rmi_function *fc);
+	int (*late_resume)(struct rmi_function *fc);
 #endif
 #endif
 };
@@ -133,8 +133,8 @@ int __must_check __rmi_register_function_driver(struct rmi_function_driver *,
 
 void rmi_unregister_function_driver(struct rmi_function_driver *);
 
-int __must_check rmi_register_function_dev(struct rmi_function_dev *);
-void rmi_unregister_function_dev(struct rmi_function_dev *);
+int __must_check rmi_register_function_dev(struct rmi_function *);
+void rmi_unregister_function_dev(struct rmi_function *);
 
 /**
  * struct rmi_driver - driver for an RMI4 sensor on the RMI bus.

@@ -178,8 +178,8 @@ static int rmi_sensor_remove(struct device *dev)
 
 static void rmi_release_function_dev(struct device *dev)
 {
-	struct rmi_function_dev *fn_dev = to_rmi_function_dev(dev);
-	kfree(fn_dev);
+	struct rmi_function *fn = to_rmi_function(dev);
+	kfree(fn);
 }
 
 struct device_type rmi_function_type = {
@@ -190,30 +190,30 @@ EXPORT_SYMBOL_GPL(rmi_function_type);
 
 #if CONFIG_RMI4_DEBUG
 
-static void rmi_function_setup_debugfs(struct rmi_function_dev *fn_dev)
+static void rmi_function_setup_debugfs(struct rmi_function *fn)
 {
 	char dirname[12];
 
-	snprintf(dirname, sizeof(dirname), "F%02X", fn_dev->fd.function_number);
-	fn_dev->debugfs_root = debugfs_create_dir(dirname,
-						fn_dev->rmi_dev->debugfs_root);
-	if (!fn_dev->debugfs_root)
-		dev_warn(&fn_dev->dev, "Failed to create debugfs dir.\n");
+	snprintf(dirname, sizeof(dirname), "F%02X", fn->fd.function_number);
+	fn->debugfs_root = debugfs_create_dir(dirname,
+						fn->rmi_dev->debugfs_root);
+	if (!fn->debugfs_root)
+		dev_warn(&fn->dev, "Failed to create debugfs dir.\n");
 }
 
-static void rmi_function_teardown_debugfs(struct rmi_function_dev *fn_dev)
+static void rmi_function_teardown_debugfs(struct rmi_function *fn)
 {
-	if (fn_dev->debugfs_root)
-		debugfs_remove_recursive(fn_dev->debugfs_root);
+	if (fn->debugfs_root)
+		debugfs_remove_recursive(fn->debugfs_root);
 }
 
 #else
 
-static void rmi_function_setup_debugfs(struct rmi_function_dev *fn_dev)
+static void rmi_function_setup_debugfs(struct rmi_function *fn)
 {
 }
 
-static void rmi_function_teardown_debugfs(struct rmi_function_dev *fn_dev)
+static void rmi_function_teardown_debugfs(struct rmi_function *fn)
 {
 }
 
@@ -222,22 +222,22 @@ static void rmi_function_teardown_debugfs(struct rmi_function_dev *fn_dev)
 static int rmi_function_match(struct device *dev, struct device_driver *drv)
 {
 	struct rmi_function_driver *fn_drv = to_rmi_function_driver(drv);
-	struct rmi_function_dev *fn_dev = to_rmi_function_dev(dev);
+	struct rmi_function *fn = to_rmi_function(dev);
 
-	return fn_dev->fd.function_number == fn_drv->func;
+	return fn->fd.function_number == fn_drv->func;
 }
 
 static int rmi_function_probe(struct device *dev)
 {
 	struct rmi_function_driver *fn_drv;
-	struct rmi_function_dev *fn_dev = to_rmi_function_dev(dev);
+	struct rmi_function *fn = to_rmi_function(dev);
 
 	dev_dbg(dev, "%s called.\n", __func__);
 
 	fn_drv = to_rmi_function_driver(dev->driver);
 
 	if (fn_drv->probe)
-		return fn_drv->probe(fn_dev);
+		return fn_drv->probe(fn);
 
 	return 0;
 }
@@ -245,12 +245,12 @@ static int rmi_function_probe(struct device *dev)
 static int __rmi_function_remove(struct device *dev)
 {
 	struct rmi_function_driver *fn_drv;
-	struct rmi_function_dev *fn_dev = to_rmi_function_dev(dev);
+	struct rmi_function *fn = to_rmi_function(dev);
 
 	fn_drv = to_rmi_function_driver(dev->driver);
 
 	if (fn_drv->remove)
-		return fn_drv->remove(fn_dev);
+		return fn_drv->remove(fn);
 
 	return 0;
 }
@@ -263,36 +263,36 @@ static int rmi_function_remove(struct device *dev)
 	return 0;
 }
 
-int rmi_register_function_dev(struct rmi_function_dev *fn_dev)
+int rmi_register_function_dev(struct rmi_function *fn)
 {
-	struct rmi_device *rmi_dev = fn_dev->rmi_dev;
+	struct rmi_device *rmi_dev = fn->rmi_dev;
 	int error;
 
-	dev_set_name(&fn_dev->dev, "%s.fn%02x", dev_name(&rmi_dev->dev),
-		     fn_dev->fd.function_number);
+	dev_set_name(&fn->dev, "%s.fn%02x", dev_name(&rmi_dev->dev),
+		     fn->fd.function_number);
 
-	fn_dev->dev.parent = &rmi_dev->dev;
-	fn_dev->dev.type = &rmi_function_type;
-	fn_dev->dev.bus = &rmi_bus_type;
+	fn->dev.parent = &rmi_dev->dev;
+	fn->dev.type = &rmi_function_type;
+	fn->dev.bus = &rmi_bus_type;
 
-	error = device_register(&fn_dev->dev);
+	error = device_register(&fn->dev);
 	if (error) {
 		dev_err(&rmi_dev->dev, "Failed device register function device %s.\n",
-			dev_name(&fn_dev->dev));
+			dev_name(&fn->dev));
 		return error;
 	}
 
 	dev_dbg(&rmi_dev->dev, "Registered F%02X.\n",
-		fn_dev->fd.function_number);
+		fn->fd.function_number);
 
-	rmi_function_setup_debugfs(fn_dev);
+	rmi_function_setup_debugfs(fn);
 	return 0;
 }
 
-void rmi_unregister_function_dev(struct rmi_function_dev *fn_dev)
+void rmi_unregister_function_dev(struct rmi_function *fn)
 {
-	rmi_function_teardown_debugfs(fn_dev);
-	device_unregister(&fn_dev->dev);
+	rmi_function_teardown_debugfs(fn);
+	device_unregister(&fn->dev);
 }
 
 /**

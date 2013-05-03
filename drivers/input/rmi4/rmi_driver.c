@@ -176,51 +176,51 @@ int enable_sensor(struct rmi_device *rmi_dev)
 
 static void rmi_free_function_list(struct rmi_device *rmi_dev)
 {
-	struct rmi_function_dev *fn_dev, *tmp;
+	struct rmi_function *fn, *tmp;
 	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
 
 	data->f01_dev = NULL;
 
 	/* Do this in reverse order so F01 will be removed last. */
-	list_for_each_entry_safe_reverse(fn_dev, tmp,
+	list_for_each_entry_safe_reverse(fn, tmp,
 					&data->function_list, node) {
-		list_del(&fn_dev->node);
-		rmi_unregister_function_dev(fn_dev);
+		list_del(&fn->node);
+		rmi_unregister_function_dev(fn);
 	}
 }
 
-static int reset_one_function(struct rmi_function_dev *fn_dev)
+static int reset_one_function(struct rmi_function *fn)
 {
 	struct rmi_function_driver *fn_drv;
 	int retval = 0;
 
-	if (!fn_dev || !fn_dev->dev.driver)
+	if (!fn || !fn->dev.driver)
 		return 0;
 
-	fn_drv = to_rmi_function_driver(fn_dev->dev.driver);
+	fn_drv = to_rmi_function_driver(fn->dev.driver);
 	if (fn_drv->reset) {
-		retval = fn_drv->reset(fn_dev);
+		retval = fn_drv->reset(fn);
 		if (retval < 0)
-			dev_err(&fn_dev->dev, "Reset failed with code %d.\n",
+			dev_err(&fn->dev, "Reset failed with code %d.\n",
 				retval);
 	}
 
 	return retval;
 }
 
-static int configure_one_function(struct rmi_function_dev *fn_dev)
+static int configure_one_function(struct rmi_function *fn)
 {
 	struct rmi_function_driver *fn_drv;
 	int retval = 0;
 
-	if (!fn_dev || !fn_dev->dev.driver)
+	if (!fn || !fn->dev.driver)
 		return 0;
 
-	fn_drv = to_rmi_function_driver(fn_dev->dev.driver);
+	fn_drv = to_rmi_function_driver(fn->dev.driver);
 	if (fn_drv->config) {
-		retval = fn_drv->config(fn_dev);
+		retval = fn_drv->config(fn);
 		if (retval < 0)
-			dev_err(&fn_dev->dev, "Config failed with code %d.\n",
+			dev_err(&fn->dev, "Config failed with code %d.\n",
 				retval);
 	}
 
@@ -230,7 +230,7 @@ static int configure_one_function(struct rmi_function_dev *fn_dev)
 static int rmi_driver_process_reset_requests(struct rmi_device *rmi_dev)
 {
 	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
-	struct rmi_function_dev *entry;
+	struct rmi_function *entry;
 	int retval;
 
 	if (list_empty(&data->function_list))
@@ -248,7 +248,7 @@ static int rmi_driver_process_reset_requests(struct rmi_device *rmi_dev)
 static int rmi_driver_process_config_requests(struct rmi_device *rmi_dev)
 {
 	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
-	struct rmi_function_dev *entry;
+	struct rmi_function *entry;
 	int retval;
 
 	if (list_empty(&data->function_list))
@@ -263,21 +263,21 @@ static int rmi_driver_process_config_requests(struct rmi_device *rmi_dev)
 	return 0;
 }
 
-static void process_one_interrupt(struct rmi_function_dev *fn_dev,
+static void process_one_interrupt(struct rmi_function *fn,
 		unsigned long *irq_status, struct rmi_driver_data *data)
 {
 	struct rmi_function_driver *fn_drv;
 	DECLARE_BITMAP(irq_bits, data->num_of_irq_regs);
 
-	if (!fn_dev || !fn_dev->dev.driver)
+	if (!fn || !fn->dev.driver)
 		return;
 
-	fn_drv = to_rmi_function_driver(fn_dev->dev.driver);
-	if (fn_dev->irq_mask && fn_drv->attention) {
-		bitmap_and(irq_bits, irq_status, fn_dev->irq_mask,
+	fn_drv = to_rmi_function_driver(fn->dev.driver);
+	if (fn->irq_mask && fn_drv->attention) {
+		bitmap_and(irq_bits, irq_status, fn->irq_mask,
 				data->irq_count);
 		if (!bitmap_empty(irq_bits, data->irq_count))
-			fn_drv->attention(fn_dev, irq_bits);
+			fn_drv->attention(fn, irq_bits);
 	}
 }
 
@@ -285,7 +285,7 @@ static int process_interrupt_requests(struct rmi_device *rmi_dev)
 {
 	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
 	struct device *dev = &rmi_dev->dev;
-	struct rmi_function_dev *entry;
+	struct rmi_function *entry;
 	int error;
 
 	error = rmi_read_block(rmi_dev,
@@ -471,20 +471,20 @@ static int rmi_driver_reset_handler(struct rmi_device *rmi_dev)
  * Construct a function's IRQ mask. This should be called once and stored.
  */
 int rmi_driver_irq_get_mask(struct rmi_device *rmi_dev,
-		struct rmi_function_dev *fn_dev) {
+		struct rmi_function *fn) {
 	int i;
 	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
 
 	/* call devm_kcalloc when it will be defined in kernel in future */
-	fn_dev->irq_mask = devm_kzalloc(&rmi_dev->dev,
+	fn->irq_mask = devm_kzalloc(&rmi_dev->dev,
 			BITS_TO_LONGS(data->irq_count)*sizeof(unsigned long),
 			GFP_KERNEL);
 
-	if (!fn_dev->irq_mask)
+	if (!fn->irq_mask)
 		return -ENOMEM;
 
-	for (i = 0; i < fn_dev->num_of_irqs; i++)
-		set_bit(fn_dev->irq_pos+i, fn_dev->irq_mask);
+	for (i = 0; i < fn->num_of_irqs; i++)
+		set_bit(fn->irq_pos+i, fn->irq_mask);
 	return 0;
 }
 
@@ -507,7 +507,7 @@ static int create_function_dev(struct rmi_device *rmi_dev,
 				     u16 page_start)
 {
 	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
-	struct rmi_function_dev *fn_dev = NULL;
+	struct rmi_function *fn = NULL;
 	int retval = 0;
 	struct device *dev = &rmi_dev->dev;
 	struct rmi_device_platform_data *pdata;
@@ -517,29 +517,29 @@ static int create_function_dev(struct rmi_device *rmi_dev,
 	dev_dbg(dev, "Initializing F%02X for %s.\n", pdt->function_number,
 		pdata->sensor_name);
 
-	fn_dev = kzalloc(sizeof(struct rmi_function_dev), GFP_KERNEL);
-	if (!fn_dev) {
+	fn = kzalloc(sizeof(struct rmi_function), GFP_KERNEL);
+	if (!fn) {
 		dev_err(dev, "Failed to allocate F%02X device.\n",
 			pdt->function_number);
 		return -ENOMEM;
 	}
 
-	INIT_LIST_HEAD(&fn_dev->node);
-	copy_pdt_entry_to_fd(pdt, &fn_dev->fd, page_start);
+	INIT_LIST_HEAD(&fn->node);
+	copy_pdt_entry_to_fd(pdt, &fn->fd, page_start);
 
-	fn_dev->rmi_dev = rmi_dev;
-	fn_dev->num_of_irqs = pdt->interrupt_source_count;
-	fn_dev->irq_pos = *current_irq_count;
-	*current_irq_count += fn_dev->num_of_irqs;
+	fn->rmi_dev = rmi_dev;
+	fn->num_of_irqs = pdt->interrupt_source_count;
+	fn->irq_pos = *current_irq_count;
+	*current_irq_count += fn->num_of_irqs;
 
-	retval = rmi_driver_irq_get_mask(rmi_dev, fn_dev);
+	retval = rmi_driver_irq_get_mask(rmi_dev, fn);
 	if (retval < 0) {
 		dev_err(dev, "%s: Failed to create irq_mask for F%02X.\n",
 			__func__, pdt->function_number);
 		return retval;
 	}
 
-	retval = rmi_register_function_dev(fn_dev);
+	retval = rmi_register_function_dev(fn);
 	if (retval < 0) {
 		dev_err(dev, "Failed to register F%02X device.\n",
 			pdt->function_number);
@@ -549,14 +549,14 @@ static int create_function_dev(struct rmi_device *rmi_dev,
 	/* we need to ensure that F01 is at the head of the list.
 	 */
 	if (pdt->function_number == 0x01) {
-		list_add(&fn_dev->node, &data->function_list);
-		data->f01_dev = fn_dev;
+		list_add(&fn->node, &data->function_list);
+		data->f01_dev = fn;
 	} else
-		list_add_tail(&fn_dev->node, &data->function_list);
+		list_add_tail(&fn->node, &data->function_list);
 
 	return 0;
 err_free_mem:
-	kfree(fn_dev);
+	kfree(fn);
 	return retval;
 }
 
@@ -832,21 +832,21 @@ static int f01_notifier_call(struct notifier_block *nb,
 				unsigned long action, void *data)
 {
 	struct device *dev = data;
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 
 	if (dev->type != &rmi_function_type)
 		return 0;
 
-	fn_dev = to_rmi_function_dev(dev);
-	if (fn_dev->fd.function_number != 0x01)
+	fn = to_rmi_function(dev);
+	if (fn->fd.function_number != 0x01)
 		return 0;
 
 	switch (action) {
 	case BUS_NOTIFY_BOUND_DRIVER:
-		enable_sensor(fn_dev->rmi_dev);
+		enable_sensor(fn->rmi_dev);
 		break;
 	case BUS_NOTIFY_UNBIND_DRIVER:
-		disable_sensor(fn_dev->rmi_dev);
+		disable_sensor(fn->rmi_dev);
 		break;
 	}
 	return 0;
@@ -857,20 +857,20 @@ static struct notifier_block rmi_bus_notifier = {
 };
 
 #ifdef CONFIG_PM
-static int suspend_one_device(struct rmi_function_dev *fn_dev)
+static int suspend_one_device(struct rmi_function *fn)
 {
 	struct rmi_function_driver *fn_drv;
 	int retval = 0;
 
-	if (!fn_dev->dev.driver)
+	if (!fn->dev.driver)
 		return 0;
 
-	fn_drv = to_rmi_function_driver(fn_dev->dev.driver);
+	fn_drv = to_rmi_function_driver(fn->dev.driver);
 
 	if (fn_drv->suspend) {
-		retval = fn_drv->suspend(fn_dev);
+		retval = fn_drv->suspend(fn);
 		if (retval < 0)
-			dev_err(&fn_dev->dev, "Suspend failed, code: %d",
+			dev_err(&fn->dev, "Suspend failed, code: %d",
 				retval);
 	}
 
@@ -880,7 +880,7 @@ static int suspend_one_device(struct rmi_function_dev *fn_dev)
 static int rmi_driver_suspend(struct device *dev)
 {
 	struct rmi_driver_data *data;
-	struct rmi_function_dev *entry;
+	struct rmi_function *entry;
 	int retval = 0;
 	struct rmi_device *rmi_dev = to_rmi_device(dev);
 
@@ -913,20 +913,20 @@ exit:
 	return retval;
 }
 
-static int resume_one_device(struct rmi_function_dev *fn_dev)
+static int resume_one_device(struct rmi_function *fn)
 {
 	struct rmi_function_driver *fn_drv;
 	int retval = 0;
 
-	if (!fn_dev->dev.driver)
+	if (!fn->dev.driver)
 		return 0;
 
-	fn_drv = to_rmi_function_driver(fn_dev->dev.driver);
+	fn_drv = to_rmi_function_driver(fn->dev.driver);
 
 	if (fn_drv->resume) {
-		retval = fn_drv->resume(fn_dev);
+		retval = fn_drv->resume(fn);
 		if (retval < 0)
-			dev_err(&fn_dev->dev, "Resume failed, code: %d",
+			dev_err(&fn->dev, "Resume failed, code: %d",
 				retval);
 	}
 
@@ -936,7 +936,7 @@ static int resume_one_device(struct rmi_function_dev *fn_dev)
 static int rmi_driver_resume(struct device *dev)
 {
 	struct rmi_driver_data *data;
-	struct rmi_function_dev *entry;
+	struct rmi_function *entry;
 	int retval = 0;
 	struct rmi_device *rmi_dev = to_rmi_device(dev);
 
@@ -976,20 +976,20 @@ exit:
 
 #if defined(CONFIG_HAS_EARLYSUSPEND)
 
-static int early_suspend_one_device(struct rmi_function_dev *fn_dev)
+static int early_suspend_one_device(struct rmi_function *fn)
 {
 	struct rmi_function_driver *fn_drv;
 	int retval = 0;
 
-	if (!fn_dev->dev.driver)
+	if (!fn->dev.driver)
 		return 0;
 
-	fn_drv = to_rmi_function_driver(fn_dev->dev.driver);
+	fn_drv = to_rmi_function_driver(fn->dev.driver);
 
 	if (fn_drv->early_suspend) {
-		retval = fn_drv->early_suspend(fn_dev);
+		retval = fn_drv->early_suspend(fn);
 		if (retval < 0)
-			dev_err(&fn_dev->dev, "Early suspend failed, code: %d",
+			dev_err(&fn->dev, "Early suspend failed, code: %d",
 				retval);
 	}
 
@@ -1001,7 +1001,7 @@ static void rmi_driver_early_suspend(struct early_suspend *h)
 	struct rmi_device *rmi_dev =
 	    container_of(h, struct rmi_device, early_suspend_handler);
 	struct rmi_driver_data *data;
-	struct rmi_function_dev *entry;
+	struct rmi_function *entry;
 	int retval = 0;
 
 	data = dev_get_drvdata(&rmi_dev->dev);
@@ -1029,20 +1029,20 @@ exit:
 	mutex_unlock(&data->suspend_mutex);
 }
 
-static int late_resume_one_device(struct rmi_function_dev *fn_dev)
+static int late_resume_one_device(struct rmi_function *fn)
 {
 	struct rmi_function_driver *fn_drv;
 	int retval = 0;
 
-	if (!fn_dev->dev.driver)
+	if (!fn->dev.driver)
 		return 0;
 
-	fn_drv = to_rmi_function_driver(fn_dev->dev.driver);
+	fn_drv = to_rmi_function_driver(fn->dev.driver);
 
 	if (fn_drv->late_resume) {
-		retval = fn_drv->late_resume(fn_dev);
+		retval = fn_drv->late_resume(fn);
 		if (retval < 0)
-			dev_err(&fn_dev->dev, "Late resume failed, code: %d",
+			dev_err(&fn->dev, "Late resume failed, code: %d",
 				retval);
 	}
 
@@ -1054,7 +1054,7 @@ static void rmi_driver_late_resume(struct early_suspend *h)
 	struct rmi_device *rmi_dev =
 	    container_of(h, struct rmi_device, early_suspend_handler);
 	struct rmi_driver_data *data;
-	struct rmi_function_dev *entry;
+	struct rmi_function *entry;
 	int retval = 0;
 
 	data = dev_get_drvdata(&rmi_dev->dev);
