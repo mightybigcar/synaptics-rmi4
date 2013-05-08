@@ -28,7 +28,6 @@ struct driver_ctl_data {
 #ifdef	CONFIG_RMI4_DEBUG
 	// TODO: Move delay into SPI module.
 	struct dentry *debugfs_delay;
-	struct dentry *debugfs_phys;
 #endif
 
 	struct rmi_control_handler_data hdata;
@@ -146,85 +145,6 @@ static const struct file_operations delay_fops = {
 	.write = delay_write,
 };
 
-#define PHYS_NAME "phys"
-
-static loff_t phys_seek(struct file *filp, loff_t offset, int whence)
-{
-	struct driver_debugfs_data *data = filp->private_data;
-	int new_pos;
-
-	switch (whence) {
-	case SEEK_SET:
-		new_pos = offset;
-		break;
-	case SEEK_CUR:
-		new_pos = data->pos + offset;
-		break;
-	default:
-		dev_err(&data->rmi_dev->dev, "Invalid whence of %d.\n", whence);
-		return -EINVAL;
-	}
-
-	if (new_pos < 0) {
-		dev_err(&data->rmi_dev->dev, "Invalid position %d.\n", new_pos);
-		return -EINVAL;
-	}
-
-	data->pos = new_pos;
-	return data->pos;
-}
-
-static ssize_t phys_read(struct file *filp, char __user *buffer, size_t size,
-		    loff_t *offset) {
-	struct driver_debugfs_data *data = filp->private_data;
-	struct rmi_phys_info *info = &data->rmi_dev->phys->info;
-	int retval;
-	char *local_buf;
-	int buf_len;
-	int new_pos = data->pos + *offset;
-
-	if (new_pos < 0) {
-		dev_err(&data->rmi_dev->dev, "Invalid position %d.\n", new_pos);
-		return -EINVAL;
-	}
-
-	local_buf = kcalloc(size, sizeof(u8), GFP_KERNEL);
-	if (!local_buf)
-		return -ENOMEM;
-
-	buf_len = snprintf(local_buf, size,
-		"%-5s %ld %ld %ld %ld %ld %ld\n",
-		 info->proto ? info->proto : "unk",
-		 info->tx_count, info->tx_bytes, info->tx_errs,
-		 info->rx_count, info->rx_bytes, info->rx_errs);
-	if (buf_len <= 0)
-		retval = -EFAULT;
-	else if (new_pos >= buf_len)
-		retval = 0;
-	else {
-		int copy_count = buf_len - new_pos;
-		local_buf += new_pos;
-		if (copy_to_user(buffer, local_buf, copy_count))
-			retval = -EFAULT;
-		else {
-			retval = copy_count;
-			data->pos = new_pos + copy_count;
-		}
-	}
-	kfree(local_buf);
-
-	return retval;
-}
-
-static const struct file_operations phys_fops = {
-	.owner = THIS_MODULE,
-	.open = debug_open,
-	.release = debug_release,
-	.read = phys_read,
-	.llseek = phys_seek,
-};
-
-
 static int setup_debugfs(struct driver_ctl_data *ctl_data)
 {
 	struct rmi_device *rmi_dev = ctl_data->rmi_dev;
@@ -246,13 +166,11 @@ static int setup_debugfs(struct driver_ctl_data *ctl_data)
 		}
 	}
 
-	// TODO: Convert this to use debugfs_create_u32_array.
-	ctl_data->debugfs_phys = debugfs_create_file(PHYS_NAME, RMI_RO_ATTR,
-				rmi_dev->debugfs_root, rmi_dev, &phys_fops);
-	if (!ctl_data->debugfs_phys || IS_ERR(ctl_data->debugfs_phys)) {
-		dev_warn(&rmi_dev->dev, "Failed to create debugfs phys.\n");
-		ctl_data->debugfs_phys = NULL;
-	}
+	if (!debugfs_create_u32_array("transport_stats", RMI_RO_ATTR,
+		rmi_dev->debugfs_root, (u32 *)&info->tx_count, 6))
+		dev_warn(&rmi_dev->dev,
+			 "Failed to create debugfs transport_stats\n");
+
 
 	if (debugfs_create_bool("irq_debug", RMI_RW_ATTR, rmi_dev->debugfs_root,
 			&data->irq_debug))
@@ -270,8 +188,6 @@ static void teardown_debugfs(struct driver_ctl_data *data)
 	debugfs_remove_recursive(data->rmi_dev->debugfs_root);
 	if (data->debugfs_delay)
 		debugfs_remove(data->debugfs_delay);
-	if (data->debugfs_phys)
-		debugfs_remove(data->debugfs_phys);
 }
 #else
 #define teardown_debugfs(rmi_dev)
