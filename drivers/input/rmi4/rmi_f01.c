@@ -409,8 +409,9 @@ static int rmi_f01_probe(struct rmi_function *fn)
 }
 
 #ifdef CONFIG_PM_SLEEP
-static int rmi_f01_suspend(struct rmi_function *fn)
+static int rmi_f01_suspend(struct device *dev)
 {
+	struct rmi_function *fn = to_rmi_function(dev);
 	struct rmi_device *rmi_dev = fn->rmi_dev;
 	struct f01_data *data = fn->data;
 	int error = 0;
@@ -439,8 +440,9 @@ static int rmi_f01_suspend(struct rmi_function *fn)
 	return 0;
 }
 
-static int rmi_f01_resume(struct rmi_function *fn)
+static int rmi_f01_resume(struct device *dev)
 {
+	struct rmi_function *fn = to_rmi_function(dev);
 	struct rmi_device *rmi_dev = fn->rmi_dev;
 	struct f01_data *data = fn->data;
 	int error;
@@ -464,6 +466,8 @@ static int rmi_f01_resume(struct rmi_function *fn)
 	return 0;
 }
 #endif /* CONFIG_PM_SLEEP */
+
+static SIMPLE_DEV_PM_OPS(rmi_f01_pm_ops, rmi_f01_suspend, rmi_f01_resume);
 
 static int rmi_f01_attention(struct rmi_function *fn,
 						unsigned long *irq_bits)
@@ -491,6 +495,7 @@ static int rmi_f01_attention(struct rmi_function *fn,
 struct rmi_function_driver rmi_f01_driver = {
 	.driver = {
 		.name = "rmi_f01",
+		.pm	= &rmi_f01_pm_ops,
 		/*
 		 * Do not allow user unbinding of F01 as it is a critical
 		 * function.
@@ -501,14 +506,4 @@ struct rmi_function_driver rmi_f01_driver = {
 	.probe     = rmi_f01_probe,
 	.config    = rmi_f01_config,
 	.attention = rmi_f01_attention,
-
-#ifdef	CONFIG_PM
-#if defined(CONFIG_HAS_EARLYSUSPEND)
-	.early_suspend = rmi_f01_suspend,
-	.late_resume = rmi_f01_resume,
-#else
-	.suspend = rmi_f01_suspend,
-	.resume = rmi_f01_resume,
-#endif  /* defined(CONFIG_HAS_EARLYSUSPEND) && !def... */
-#endif  /* CONFIG_PM */
 };

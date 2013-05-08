@@ -339,7 +339,7 @@ static struct rmi_control_handler_data *driver_ctl_attach(struct device *dev, vo
 
 static struct rmi_control_handler handler = {
 	.name = "driver",
-	.dev_type = &rmi_sensor_type,
+	.dev_type = &rmi_device_type,
 	.attach = driver_ctl_attach,
 	.remove = driver_ctl_cleanup,
 };

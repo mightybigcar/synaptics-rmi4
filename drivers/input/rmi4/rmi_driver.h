@@ -379,9 +379,6 @@ struct rmi_driver_data {
 	bool enabled;
 #ifdef CONFIG_PM
 	bool suspended;
-#if defined(CONFIG_HAS_EARLYSUSPEND)
-	bool early_suspended;
-#endif
 	struct mutex suspend_mutex;
 
 	void *pm_data;
@@ -417,7 +414,7 @@ extern void rmi4_fw_update(struct rmi_device *rmi_dev,
 #define rmi4_fw_update(rmi_dev, f01_pdt, f34_pdt) 0
 #endif
 
-extern struct rmi_driver rmi_sensor_driver;
+extern struct rmi_driver rmi_physical_driver;
 extern struct rmi_function_driver rmi_f01_driver;
 
 int rmi_register_sensor_driver(void);

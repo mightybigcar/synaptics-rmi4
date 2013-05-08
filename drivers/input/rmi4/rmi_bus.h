@@ -31,10 +31,10 @@ extern struct device_type rmi_function_type;
 	(dev->type == &rmi_function_type)
 
 
-extern struct device_type rmi_sensor_type;
+extern struct device_type rmi_device_type;
 
-#define rmi_is_sensor_device(dev) \
-	(dev->type == &rmi_sensor_type)
+#define rmi_is_physical_device(dev) \
+	(dev->type == &rmi_device_type)
 
 
 /* Permissions for sysfs attributes.  Since the permissions policy will change
@@ -96,10 +96,6 @@ struct rmi_function {
  * configuration settings to the device.
  * @attention: Called when the IRQ(s) for the function are set by the touch
  * sensor.
- * @suspend: Should perform any required operations to suspend the particular
- * function.
- * @resume: Should perform any required operations to resume the particular
- * function.
  *
  * All callbacks are expected to return 0 on success, error code on failure.
  */
@@ -111,16 +107,7 @@ struct rmi_function_driver {
 	int (*remove)(struct rmi_function *fc);
 	int (*config)(struct rmi_function *fc);
 	int (*reset)(struct rmi_function *fc);
-	int (*attention)(struct rmi_function *fc,
-			 unsigned long *irq_bits);
-#ifdef CONFIG_PM
-	int (*suspend)(struct rmi_function *fc);
-	int (*resume)(struct rmi_function *fc);
-#if defined(CONFIG_HAS_EARLYSUSPEND)
-	int (*early_suspend)(struct rmi_function *fc);
-	int (*late_resume)(struct rmi_function *fc);
-#endif
-#endif
+	int (*attention)(struct rmi_function *fc, unsigned long *irq_bits);
 };
 
 #define to_rmi_function_driver(d) \
@@ -233,8 +220,6 @@ struct rmi_transport_device {
  * @number: Unique number for the device on the bus.
  * @driver: Pointer to associated driver
  * @xport: Pointer to the transport interface
- * @early_suspend_handler: Pointers to early_suspend, if
- * configured.
  * @debugfs_root: base for this particular sensor device.
  *
  */
@@ -245,11 +230,11 @@ struct rmi_device {
 	struct rmi_driver *driver;
 	struct rmi_transport_device *xport;
 
-	#ifdef CONFIG_HAS_EARLYSUSPEND
-	struct early_suspend early_suspend_handler;
-	#endif
-
 	struct dentry *debugfs_root;
+
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	struct early_suspend early_suspend_handler;
+#endif
 };
 
 #define to_rmi_device(d) container_of(d, struct rmi_device, dev)

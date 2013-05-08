@@ -22,7 +22,7 @@ struct rmi_control_handler_data {
  * @name - useful for diagnostics
  * @dev_type - the type of device the handler is interested in.
  * @function_id - the RMI4 function ID it is interested in (ignored if 0 or
- * dev_type == rmi_sensor_type);
+ * dev_type == rmi_device_type);
  * @attach - called if a device appears on the bus that matches the parameters
  * of this handler.
  * @remove - called when the device disappears from the bus.

@@ -856,39 +856,14 @@ static struct notifier_block rmi_bus_notifier = {
 	.notifier_call = f01_notifier_call,
 };
 
-#ifdef CONFIG_PM
-static int suspend_one_device(struct rmi_function *fn)
-{
-	struct rmi_function_driver *fn_drv;
-	int retval = 0;
-
-	if (!fn->dev.driver)
-		return 0;
-
-	fn_drv = to_rmi_function_driver(fn->dev.driver);
-
-	if (fn_drv->suspend) {
-		retval = fn_drv->suspend(fn);
-		if (retval < 0)
-			dev_err(&fn->dev, "Suspend failed, code: %d",
-				retval);
-	}
-
-	return retval;
-}
-
+#ifdef CONFIG_PM_SLEEP
 static int rmi_driver_suspend(struct device *dev)
 {
-	struct rmi_driver_data *data;
-	struct rmi_function *entry;
-	int retval = 0;
 	struct rmi_device *rmi_dev = to_rmi_device(dev);
-
-	data = dev_get_drvdata(&rmi_dev->dev);
+	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
+	int retval = 0;
 
 	mutex_lock(&data->suspend_mutex);
-	if (data->suspended)
-		goto exit;
 
 	if (!IS_ENABLED(CONFIG_HAS_EARLYSUSPEND) && data->pre_suspend) {
 		retval = data->pre_suspend(data->pm_data);
@@ -898,13 +873,6 @@ static int rmi_driver_suspend(struct device *dev)
 
 	disable_sensor(rmi_dev);
 
-	/** Do it backwards so F01 comes last. */
-	list_for_each_entry_reverse(entry, &data->function_list, node)
-		if (suspend_one_device(entry) < 0)
-			goto exit;
-
-	data->suspended = true;
-
 	if (data->post_suspend)
 		retval = data->post_suspend(data->pm_data);
 
@@ -913,47 +881,17 @@ exit:
 	return retval;
 }
 
-static int resume_one_device(struct rmi_function *fn)
-{
-	struct rmi_function_driver *fn_drv;
-	int retval = 0;
-
-	if (!fn->dev.driver)
-		return 0;
-
-	fn_drv = to_rmi_function_driver(fn->dev.driver);
-
-	if (fn_drv->resume) {
-		retval = fn_drv->resume(fn);
-		if (retval < 0)
-			dev_err(&fn->dev, "Resume failed, code: %d",
-				retval);
-	}
-
-	return retval;
-}
-
 static int rmi_driver_resume(struct device *dev)
 {
-	struct rmi_driver_data *data;
-	struct rmi_function *entry;
-	int retval = 0;
 	struct rmi_device *rmi_dev = to_rmi_device(dev);
+	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
+	int retval = 0;
 
-	data = dev_get_drvdata(&rmi_dev->dev);
 	mutex_lock(&data->suspend_mutex);
-	if (!data->suspended)
-		goto exit;
 
 	if (data->pre_resume) {
 		retval = data->pre_resume(data->pm_data);
 		if (retval)
-			goto exit;
-	}
-
-	/** Do it forwards, so F01 comes first. */
-	list_for_each_entry(entry, &data->function_list, node) {
-		if (resume_one_device(entry) < 0)
 			goto exit;
 	}
 
@@ -962,13 +900,13 @@ static int rmi_driver_resume(struct device *dev)
 		goto exit;
 
 
-	if (!IS_ENABLED(CONFIG_HAS_EARLYSUSPEND) && data->post_resume) {
+	if (!IS_ENABLED(CONFIG_HAS_EARLYSUSPEND) && data->post_resume){
 		retval = data->post_resume(data->pm_data);
 		if (retval)
-			goto exit;
+			dev_err(&rmi_dev->dev, "Post resume failed with %d.\n",
+				retval);
 	}
 
-	data->suspended = false;
 exit:
 	mutex_unlock(&data->suspend_mutex);
 	return retval;
@@ -976,111 +914,42 @@ exit:
 
 #if defined(CONFIG_HAS_EARLYSUSPEND)
 
-static int early_suspend_one_device(struct rmi_function *fn)
-{
-	struct rmi_function_driver *fn_drv;
-	int retval = 0;
-
-	if (!fn->dev.driver)
-		return 0;
-
-	fn_drv = to_rmi_function_driver(fn->dev.driver);
-
-	if (fn_drv->early_suspend) {
-		retval = fn_drv->early_suspend(fn);
-		if (retval < 0)
-			dev_err(&fn->dev, "Early suspend failed, code: %d",
-				retval);
-	}
-
-	return retval;
-}
-
 static void rmi_driver_early_suspend(struct early_suspend *h)
 {
 	struct rmi_device *rmi_dev =
 	    container_of(h, struct rmi_device, early_suspend_handler);
-	struct rmi_driver_data *data;
-	struct rmi_function *entry;
+	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
 	int retval = 0;
 
-	data = dev_get_drvdata(&rmi_dev->dev);
-
 	mutex_lock(&data->suspend_mutex);
-	if (data->early_suspended)
-		goto exit;
 
 	if (data->pre_suspend) {
 		retval = data->pre_suspend(data->pm_data);
-		if (retval) {
+		if (retval)
 			dev_err(&rmi_dev->dev, "Presuspend failed with %d.\n",
 				retval);
-			goto exit;
-		}
 	}
 
-	/* Do it backwards, so F01 comes last. */
-	list_for_each_entry_reverse(entry, &data->function_list, node)
-		if (early_suspend_one_device(entry) < 0)
-			goto exit;
-
-	data->early_suspended = true;
-exit:
 	mutex_unlock(&data->suspend_mutex);
-}
-
-static int late_resume_one_device(struct rmi_function *fn)
-{
-	struct rmi_function_driver *fn_drv;
-	int retval = 0;
-
-	if (!fn->dev.driver)
-		return 0;
-
-	fn_drv = to_rmi_function_driver(fn->dev.driver);
-
-	if (fn_drv->late_resume) {
-		retval = fn_drv->late_resume(fn);
-		if (retval < 0)
-			dev_err(&fn->dev, "Late resume failed, code: %d",
-				retval);
-	}
-
-	return retval;
 }
 
 static void rmi_driver_late_resume(struct early_suspend *h)
 {
 	struct rmi_device *rmi_dev =
 	    container_of(h, struct rmi_device, early_suspend_handler);
-	struct rmi_driver_data *data;
-	struct rmi_function *entry;
+	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
 	int retval = 0;
 
-	data = dev_get_drvdata(&rmi_dev->dev);
-
 	mutex_lock(&data->suspend_mutex);
-	if (!data->early_suspended)
-		goto exit;
 
-	/* Do it forwards, so F01 comes first. */
-	list_for_each_entry(entry, &data->function_list, node) {
-		if (late_resume_one_device(entry) < 0)
-			goto exit;
-	}
 
 	if (data->post_resume) {
 		retval = data->post_resume(data->pm_data);
-		if (retval) {
+		if (retval)
 			dev_err(&rmi_dev->dev, "Post resume failed with %d.\n",
 				retval);
-			goto exit;
-		}
 	}
 
-	data->early_suspended = false;
-
-exit:
 	mutex_unlock(&data->suspend_mutex);
 }
 #endif /* defined(CONFIG_HAS_EARLYSUSPEND) */
@@ -1106,7 +975,7 @@ static int rmi_driver_probe(struct device *dev)
 	int retval = 0;
 	struct rmi_device *rmi_dev;
 
-	if (!rmi_is_sensor_device(dev))
+	if (!rmi_is_physical_device(dev))
 		return -ENODEV;
 
 	rmi_dev = to_rmi_device(dev);
@@ -1287,10 +1156,10 @@ static int rmi_driver_probe(struct device *dev)
 static UNIVERSAL_DEV_PM_OPS(rmi_driver_pm, rmi_driver_suspend,
 			    rmi_driver_resume, NULL);
 
-struct rmi_driver rmi_sensor_driver = {
+struct rmi_driver rmi_physical_driver = {
 	.driver = {
 		.owner    = THIS_MODULE,
-		.name     = "rmi_sensor",
+		.name     = "rmi_physical",
 		.bus      = &rmi_bus_type,
 		.pm       = &rmi_driver_pm,
 		.probe    = rmi_driver_probe,
@@ -1307,7 +1176,7 @@ int __init rmi_register_sensor_driver(void)
 {
 	int retval;
 
-	retval = driver_register(&rmi_sensor_driver.driver);
+	retval = driver_register(&rmi_physical_driver.driver);
 	if (retval) {
 		pr_err("%s: driver register failed, code=%d.\n", __func__,
 		       retval);
@@ -1330,5 +1199,5 @@ int __init rmi_register_sensor_driver(void)
 void __exit rmi_unregister_sensor_driver(void)
 {
 	bus_unregister_notifier(&rmi_bus_type, &rmi_bus_notifier);
-	driver_unregister(&rmi_sensor_driver.driver);
+	driver_unregister(&rmi_physical_driver.driver);
 }
