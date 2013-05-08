@@ -66,7 +66,7 @@ static ssize_t delay_read(struct file *filp, char __user *buffer, size_t size,
 		    loff_t *offset) {
 	struct driver_debugfs_data *data = filp->private_data;
 	struct rmi_device_platform_data *pdata =
-			data->rmi_dev->phys->dev->platform_data;
+			data->rmi_dev->xport->dev->platform_data;
 	int retval;
 	char *local_buf;
 
@@ -95,7 +95,7 @@ static ssize_t delay_write(struct file *filp, const char __user *buffer,
 			   size_t size, loff_t *offset) {
 	struct driver_debugfs_data *data = filp->private_data;
 	struct rmi_device_platform_data *pdata =
-			data->rmi_dev->phys->dev->platform_data;
+			data->rmi_dev->xport->dev->platform_data;
 	int retval;
 	char *local_buf;
 	unsigned int new_read_delay;
@@ -149,7 +149,7 @@ static int setup_debugfs(struct driver_ctl_data *ctl_data)
 {
 	struct rmi_device *rmi_dev = ctl_data->rmi_dev;
 	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
-	struct rmi_transport_info *info = &rmi_dev->phys->info;
+	struct rmi_transport_info *info = &rmi_dev->xport->info;
 	int retval = 0;
 
 	if (!rmi_dev->debugfs_root)

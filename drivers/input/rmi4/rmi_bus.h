@@ -167,8 +167,8 @@ struct rmi_driver {
 #define to_rmi_driver(d) \
 	container_of(d, struct rmi_driver, driver)
 
-/** struct rmi_transport_info - diagnostic information about the RMI physical
- * device, used in the phys debugfs file.
+/** struct rmi_transport_info - diagnostic information about the RMI transport,
+ * used in the transport-info debugfs file.
  *
  * @proto String indicating the protocol being used.
  * @tx_count Number of transmit operations.
@@ -190,7 +190,7 @@ struct rmi_transport_info {
 };
 
 /**
- * struct rmi_transport_device - represent an RMI physical device
+ * struct rmi_transport_device - represent an RMI transport conncection
  *
  * @dev: Pointer to the communication device, e.g. i2c or spi
  * @rmi_dev: Pointer to the RMI device
@@ -202,21 +202,21 @@ struct rmi_transport_info {
  * handling
  * @data: Private data pointer
  *
- * The RMI physical device implements the glue between different communication
- * buses such as I2C and SPI.
+ * The RMI transport device implements the glue between different communication
+ * buses such as I2C and SPI and the physical device on the RMI bus.
  *
  */
 struct rmi_transport_device {
 	struct device *dev;
 	struct rmi_device *rmi_dev;
 
-	int (*write_block)(struct rmi_transport_device *phys, u16 addr,
+	int (*write_block)(struct rmi_transport_device *xport, u16 addr,
 			   const void *buf, const int len);
-	int (*read_block)(struct rmi_transport_device *phys, u16 addr,
+	int (*read_block)(struct rmi_transport_device *xport, u16 addr,
 			  void *buf, const int len);
 
-	int (*enable_device) (struct rmi_transport_device *phys);
-	void (*disable_device) (struct rmi_transport_device *phys);
+	int (*enable_device) (struct rmi_transport_device *xport);
+	void (*disable_device) (struct rmi_transport_device *xport);
 
 	irqreturn_t (*irq_thread)(int irq, void *p);
 	irqreturn_t (*hard_irq)(int irq, void *p);
@@ -232,7 +232,7 @@ struct rmi_transport_device {
  * @dev: The device created for the RMI bus
  * @number: Unique number for the device on the bus.
  * @driver: Pointer to associated driver
- * @phys: Pointer to the physical interface
+ * @xport: Pointer to the transport interface
  * @early_suspend_handler: Pointers to early_suspend, if
  * configured.
  * @debugfs_root: base for this particular sensor device.
@@ -243,7 +243,7 @@ struct rmi_device {
 	int number;
 
 	struct rmi_driver *driver;
-	struct rmi_transport_device *phys;
+	struct rmi_transport_device *xport;
 
 	#ifdef CONFIG_HAS_EARLYSUSPEND
 	struct early_suspend early_suspend_handler;
@@ -253,7 +253,7 @@ struct rmi_device {
 };
 
 #define to_rmi_device(d) container_of(d, struct rmi_device, dev)
-#define to_rmi_platform_data(d) ((d)->phys->dev->platform_data)
+#define to_rmi_platform_data(d) ((d)->xport->dev->platform_data)
 
 /**
  * rmi_read - read a single byte
@@ -261,12 +261,12 @@ struct rmi_device {
  * @addr: The address to read from
  * @buf: The read buffer
  *
- * Reads a byte of data using the underlaying physical protocol in to buf. It
+ * Reads a byte of data using the underlying transport into buf. It
  * returns zero or a negative error code.
  */
 static inline int rmi_read(struct rmi_device *d, u16 addr, void *buf)
 {
-	return d->phys->read_block(d->phys, addr, buf, 1);
+	return d->xport->read_block(d->xport, addr, buf, 1);
 }
 
 /**
@@ -276,13 +276,13 @@ static inline int rmi_read(struct rmi_device *d, u16 addr, void *buf)
  * @buf: The read buffer
  * @len: Length of the read buffer
  *
- * Reads a block of byte data using the underlaying physical protocol in to buf.
+ * Reads a block of byte data using the underlying transport into buf.
  * It returns the amount of bytes read or a negative error code.
  */
 static inline int rmi_read_block(struct rmi_device *d, u16 addr, void *buf,
 				 const int len)
 {
-	return d->phys->read_block(d->phys, addr, buf, len);
+	return d->xport->read_block(d->xport, addr, buf, len);
 }
 
 /**
@@ -291,12 +291,12 @@ static inline int rmi_read_block(struct rmi_device *d, u16 addr, void *buf,
  * @addr: The address to write to
  * @data: The data to write
  *
- * Writes a byte from buf using the underlaying physical protocol. It
+ * Writes a byte from buf using the underlying transport. It
  * returns zero or a negative error code.
  */
 static inline int rmi_write(struct rmi_device *d, u16 addr, const u8 data)
 {
-	return d->phys->write_block(d->phys, addr, &data, 1);
+	return d->xport->write_block(d->xport, addr, &data, 1);
 }
 
 /**
@@ -306,17 +306,17 @@ static inline int rmi_write(struct rmi_device *d, u16 addr, const u8 data)
  * @buf: The write buffer
  * @len: Length of the write buffer
  *
- * Writes a block of byte data from buf using the underlaying physical protocol.
+ * Writes a block of byte data from buf using the underlying transport.
  * It returns the amount of bytes written or a negative error code.
  */
 static inline int rmi_write_block(struct rmi_device *d, u16 addr,
 				  const void *buf, const int len)
 {
-	return d->phys->write_block(d->phys, addr, buf, len);
+	return d->xport->write_block(d->xport, addr, buf, len);
 }
 
-int rmi_register_phys_device(struct rmi_transport_device *phys);
-void rmi_unregister_phys_device(struct rmi_transport_device *phys);
+int rmi_register_transport_device(struct rmi_transport_device *xport);
+void rmi_unregister_transport_device(struct rmi_transport_device *xport);
 int rmi_for_each_dev(void *data, int (*func)(struct device *dev, void *data));
 
 /**

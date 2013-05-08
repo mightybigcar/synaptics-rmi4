@@ -41,18 +41,18 @@
 
 #define IRQ_DEBUG(data) (IS_ENABLED(CONFIG_RMI4_DEBUG) && data->irq_debug)
 
-static irqreturn_t rmi_irq_thread(int irq, void *p)
+static irqreturn_t rmi_irq_thread(int irq, void *ptr)
 {
-	struct rmi_transport_device *phys = p;
-	struct rmi_device *rmi_dev = phys->rmi_dev;
+	struct rmi_transport_device *xport = ptr;
+	struct rmi_device *rmi_dev = xport->rmi_dev;
 	struct rmi_driver *driver = rmi_dev->driver;
-	struct rmi_device_platform_data *pdata = phys->dev->platform_data;
+	struct rmi_device_platform_data *pdata = xport->dev->platform_data;
 	struct rmi_driver_data *data;
 
 	data = dev_get_drvdata(&rmi_dev->dev);
 
 	if (IRQ_DEBUG(data))
-		dev_dbg(phys->dev, "ATTN gpio, value: %d.\n",
+		dev_dbg(xport->dev, "ATTN gpio, value: %d.\n",
 				gpio_get_value(pdata->attn_gpio));
 
 	if (gpio_get_value(pdata->attn_gpio) == pdata->attn_polarity) {
@@ -122,12 +122,12 @@ void disable_sensor(struct rmi_device *rmi_dev)
 	if (!data->irq)
 		disable_polling(rmi_dev);
 
-	if (rmi_dev->phys->disable_device)
-		rmi_dev->phys->disable_device(rmi_dev->phys);
+	if (rmi_dev->xport->disable_device)
+		rmi_dev->xport->disable_device(rmi_dev->xport);
 
 	if (data->irq) {
 		disable_irq(data->irq);
-		free_irq(data->irq, rmi_dev->phys);
+		free_irq(data->irq, rmi_dev->xport);
 	}
 
 	data->enabled = false;
@@ -143,13 +143,13 @@ int enable_sensor(struct rmi_device *rmi_dev)
 	if (data->enabled)
 		return 0;
 
-	if (rmi_dev->phys->enable_device) {
-		retval = rmi_dev->phys->enable_device(rmi_dev->phys);
+	if (rmi_dev->xport->enable_device) {
+		retval = rmi_dev->xport->enable_device(rmi_dev->xport);
 		if (retval)
 			return retval;
 	}
 
-	rmi_transport = rmi_dev->phys;
+	rmi_transport = rmi_dev->xport;
 	if (data->irq) {
 		retval = request_threaded_irq(data->irq,
 				rmi_transport->hard_irq ? rmi_transport->hard_irq : NULL,
