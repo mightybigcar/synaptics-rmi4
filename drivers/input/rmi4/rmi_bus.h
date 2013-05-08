@@ -167,7 +167,7 @@ struct rmi_driver {
 #define to_rmi_driver(d) \
 	container_of(d, struct rmi_driver, driver)
 
-/** struct rmi_phys_info - diagnostic information about the RMI physical
+/** struct rmi_transport_info - diagnostic information about the RMI physical
  * device, used in the phys debugfs file.
  *
  * @proto String indicating the protocol being used.
@@ -179,7 +179,7 @@ struct rmi_driver {
  * @rx_errs  Number of errors encountered during receive operations.
  * @att_count Number of times ATTN assertions have been handled.
  */
-struct rmi_phys_info {
+struct rmi_transport_info {
 	char *proto;
 	long tx_count;
 	long tx_bytes;
@@ -190,7 +190,7 @@ struct rmi_phys_info {
 };
 
 /**
- * struct rmi_phys_device - represent an RMI physical device
+ * struct rmi_transport_device - represent an RMI physical device
  *
  * @dev: Pointer to the communication device, e.g. i2c or spi
  * @rmi_dev: Pointer to the RMI device
@@ -206,24 +206,24 @@ struct rmi_phys_info {
  * buses such as I2C and SPI.
  *
  */
-struct rmi_phys_device {
+struct rmi_transport_device {
 	struct device *dev;
 	struct rmi_device *rmi_dev;
 
-	int (*write_block)(struct rmi_phys_device *phys, u16 addr,
+	int (*write_block)(struct rmi_transport_device *phys, u16 addr,
 			   const void *buf, const int len);
-	int (*read_block)(struct rmi_phys_device *phys, u16 addr,
+	int (*read_block)(struct rmi_transport_device *phys, u16 addr,
 			  void *buf, const int len);
 
-	int (*enable_device) (struct rmi_phys_device *phys);
-	void (*disable_device) (struct rmi_phys_device *phys);
+	int (*enable_device) (struct rmi_transport_device *phys);
+	void (*disable_device) (struct rmi_transport_device *phys);
 
 	irqreturn_t (*irq_thread)(int irq, void *p);
 	irqreturn_t (*hard_irq)(int irq, void *p);
 
 	void *data;
 
-	struct rmi_phys_info info;
+	struct rmi_transport_info info;
 };
 
 /**
@@ -243,7 +243,7 @@ struct rmi_device {
 	int number;
 
 	struct rmi_driver *driver;
-	struct rmi_phys_device *phys;
+	struct rmi_transport_device *phys;
 
 	#ifdef CONFIG_HAS_EARLYSUSPEND
 	struct early_suspend early_suspend_handler;
@@ -315,8 +315,8 @@ static inline int rmi_write_block(struct rmi_device *d, u16 addr,
 	return d->phys->write_block(d->phys, addr, buf, len);
 }
 
-int rmi_register_phys_device(struct rmi_phys_device *phys);
-void rmi_unregister_phys_device(struct rmi_phys_device *phys);
+int rmi_register_phys_device(struct rmi_transport_device *phys);
+void rmi_unregister_phys_device(struct rmi_transport_device *phys);
 int rmi_for_each_dev(void *data, int (*func)(struct device *dev, void *data));
 
 /**

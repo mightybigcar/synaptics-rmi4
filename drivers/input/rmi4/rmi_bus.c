@@ -97,7 +97,7 @@ static void release_rmidev_device(struct device *dev)
  *
  * @phys: the physical device to register
  */
-int rmi_register_phys_device(struct rmi_phys_device *phys)
+int rmi_register_phys_device(struct rmi_transport_device *phys)
 {
 	static atomic_t physical_device_count = ATOMIC_INIT(0);
 	struct rmi_device_platform_data *pdata = phys->dev->platform_data;
@@ -146,7 +146,7 @@ EXPORT_SYMBOL_GPL(rmi_register_phys_device);
  * @phys: the physical driver to unregister
  *
  */
-void rmi_unregister_phys_device(struct rmi_phys_device *phys)
+void rmi_unregister_phys_device(struct rmi_transport_device *phys)
 {
 	struct rmi_device *rmi_dev = phys->rmi_dev;
 

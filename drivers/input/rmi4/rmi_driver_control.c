@@ -149,7 +149,7 @@ static int setup_debugfs(struct driver_ctl_data *ctl_data)
 {
 	struct rmi_device *rmi_dev = ctl_data->rmi_dev;
 	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
-	struct rmi_phys_info *info = &rmi_dev->phys->info;
+	struct rmi_transport_info *info = &rmi_dev->phys->info;
 	int retval = 0;
 
 	if (!rmi_dev->debugfs_root)

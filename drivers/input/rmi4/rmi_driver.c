@@ -43,7 +43,7 @@
 
 static irqreturn_t rmi_irq_thread(int irq, void *p)
 {
-	struct rmi_phys_device *phys = p;
+	struct rmi_transport_device *phys = p;
 	struct rmi_device *rmi_dev = phys->rmi_dev;
 	struct rmi_driver *driver = rmi_dev->driver;
 	struct rmi_device_platform_data *pdata = phys->dev->platform_data;
@@ -136,7 +136,7 @@ void disable_sensor(struct rmi_device *rmi_dev)
 int enable_sensor(struct rmi_device *rmi_dev)
 {
 	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
-	struct rmi_phys_device *rmi_phys;
+	struct rmi_transport_device *rmi_transport;
 	int retval = 0;
 	struct rmi_device_platform_data *pdata = to_rmi_platform_data(rmi_dev);
 
@@ -149,14 +149,14 @@ int enable_sensor(struct rmi_device *rmi_dev)
 			return retval;
 	}
 
-	rmi_phys = rmi_dev->phys;
+	rmi_transport = rmi_dev->phys;
 	if (data->irq) {
 		retval = request_threaded_irq(data->irq,
-				rmi_phys->hard_irq ? rmi_phys->hard_irq : NULL,
-				rmi_phys->irq_thread ?
-					rmi_phys->irq_thread : rmi_irq_thread,
+				rmi_transport->hard_irq ? rmi_transport->hard_irq : NULL,
+				rmi_transport->irq_thread ?
+					rmi_transport->irq_thread : rmi_irq_thread,
 				data->irq_flags,
-				dev_name(&rmi_dev->dev), rmi_phys);
+				dev_name(&rmi_dev->dev), rmi_transport);
 		if (retval)
 			return retval;
 	} else {
