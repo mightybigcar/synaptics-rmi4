@@ -19,6 +19,10 @@ include/linux/i2c.h. See the README-SYNAPTICS.txt file for instructions.
 
 * Merge changes from Dmitry Torokhov's input tree, branch synaptics-rmi4.
 
+* Removed "enabled" sysfs file.
+
+* Added gpio request when exporting ATTN via gpiolib.
+
 
 Updates for driver version 1.7 (final as of 2012-12-14)
 -------------------------------------------------------
