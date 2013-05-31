@@ -21,12 +21,8 @@
 #define _RMI_F01_H
 
 #define RMI_PRODUCT_ID_LENGTH    10
-#define RMI_PRODUCT_INFO_LENGTH   2
 
 #define RMI_DATE_CODE_LENGTH      3
-
-#define PRODUCT_ID_OFFSET 0x10
-#define PRODUCT_INFO_OFFSET 0x1E
 
 /* Force a firmware reset of the sensor */
 #define RMI_F01_CMD_DEVICE_RESET	1
@@ -52,14 +48,45 @@
 
 #define RMI_F01_BASIC_QUERY_LEN		21 /* From Query 00 through 20 */
 
+#define RMI_F01_QRY21_SLAVE_ROWS_MASK   0x07
+#define RMI_F01_QRY21_SLAVE_COLUMNS_MASK 0x38
+
+#define RMI_F01_LTS_RESERVED_SIZE 19
+
+#define RMI_F01_QRY42_DS4_QUERIES	(1 << 0)
+#define RMI_F01_QRY42_MULTI_PHYS	(1 << 1)
+#define RMI_F01_QRY42_GUEST		(1 << 2)
+#define RMI_F01_QRY42_SWR		(1 << 3)
+#define RMI_F01_QRY42_NOMINAL_REPORT	(1 << 4)
+#define RMI_F01_QRY42_RECAL_INTERVAL	(1 << 5)
+
 struct f01_basic_properties {
 	u8 manufacturer_id;
 	bool has_lts;
+	bool has_sensor_id;
 	bool has_adjustable_doze;
 	bool has_adjustable_doze_holdoff;
+	bool has_query42;
 	char dom[11]; /* YYYY/MM/DD + '\0' */
 	u8 product_id[RMI_PRODUCT_ID_LENGTH + 1];
 	u16 productinfo;
+
+	/* These are meaningful only if has_lts is true. */
+	u8 slave_asic_rows;
+	u8 slave_asic_columns;
+
+	/* This is meaningful only if has_sensor_id is true. */
+	u8 sensor_id;
+
+	/* These are meaningful only if has_query42 is true. */
+	bool has_ds4_queries;
+	bool has_multi_physical;
+	bool has_guest;
+	bool has_swr;
+	bool has_nominal_report_rate;
+	bool has_recalibration_interval;
+
+	u8 ds4_block_size;
 };
 
 /** The status code field reports the most recent device status event.

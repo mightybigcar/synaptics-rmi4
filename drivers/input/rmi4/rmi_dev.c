@@ -236,9 +236,13 @@ static int rmidev_open(struct inode *inp, struct file *filp)
 	mutex_lock(&(data->file_mutex));
 	if (data->ref_count < 1)
 		data->ref_count++;
-	else
-		retval = -EACCES;
+	else {
+		mutex_unlock(&(data->file_mutex));
+		return -EACCES;
+	}
 	mutex_unlock(&(data->file_mutex));
+
+	data->rmi_dev->driver->disable(data->rmi_dev);
 
 	return retval;
 }
@@ -254,11 +258,16 @@ static int rmidev_release(struct inode *inp, struct file *filp)
 {
 	struct rmidev_data *data = container_of(inp->i_cdev,
 			struct rmidev_data, main_dev);
+	int retval;
 
 	if (!data->rmi_dev)
 		return -EACCES;
 
 	dev_dbg(&data->rmi_dev->dev, "%s.", __func__);
+
+	retval = data->rmi_dev->driver->enable(data->rmi_dev);
+	dev_warn(&data->rmi_dev->dev, "Failed to enable sensor, code: %d.\n",
+		 retval);
 
 	mutex_lock(&(data->file_mutex));
 	data->ref_count--;
@@ -328,7 +337,7 @@ static int rmidev_attach(struct device *dev, void *data)
 	dev_t dev_no;
 	struct device *device_ptr;
 
-	if (rmi_is_physical_device(dev))
+	if (rmi_is_function_device(dev))
 		return 0;
 	dev_dbg(dev, "%s is interested.\n", __func__);
 	rmi_dev = to_rmi_device(dev);

@@ -76,13 +76,13 @@ static ssize_t rmi_fn_34_bootloaderid_show(struct device *dev,
 					struct device_attribute *attr,
 					char *buf)
 {
-	struct rmi_function *fn;
-	struct rmi_fn_34_data *instance_data;
+	struct rmi_function *fn = to_rmi_function(dev);
+	struct rmi_fn_34_data *instance_data = fn->data;
+	char str_buf[] = {instance_data->bootloaderid & 0xFF,
+		(instance_data->bootloaderid >> 8) & 0xFF,
+		'\0'};
 
-	fn = to_rmi_function(dev);
-	instance_data = fn->data;
-
-	return snprintf(buf, PAGE_SIZE, "%u\n", instance_data->bootloaderid);
+	return snprintf(buf, PAGE_SIZE, "%s\n", str_buf);
 }
 
 static ssize_t rmi_fn_34_bootloaderid_store(struct device *dev,

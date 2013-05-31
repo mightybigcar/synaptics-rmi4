@@ -167,10 +167,14 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 	data->properties.manufacturer_id = basic_query[0];
 
 	data->properties.has_lts = basic_query[1] & RMI_F01_QRY1_HAS_LTS;
+	data->properties.has_sensor_id =
+			!!(basic_query[1] & RMI_F01_QRY1_HAS_SENSOR_ID);
 	data->properties.has_adjustable_doze =
 				basic_query[1] & RMI_F01_QRY1_HAS_ADJ_DOZE;
 	data->properties.has_adjustable_doze_holdoff =
 				basic_query[1] & RMI_F01_QRY1_HAS_ADJ_DOZE_HOFF;
+	data->properties.has_query42 =
+				basic_query[1] & RMI_F01_QRY1_HAS_PROPS_2;
 
 	snprintf(data->properties.dom, sizeof(data->properties.dom),
 		"20%02d/%02d/%02d",
@@ -196,6 +200,7 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 	}
 	query_addr += F01_SERIALIZATION_SIZE;
 
+	dev_dbg(&fn->dev, "Product ID appears to be at %#06x.\n", query_addr);
 	error = rmi_read_block(rmi_dev, query_addr, data->product_id,
 				RMI_PRODUCT_ID_LENGTH);
 	if (error < 0) {
@@ -204,17 +209,20 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 	}
 	data->product_id[RMI_PRODUCT_ID_LENGTH] = '\0';
 	get_board_and_rev(fn, driver_data);
+	dev_dbg(&fn->dev, "Read product ID \"%s\"\n", data->product_id);
 
 	/* The ASIC package ID registers are overlaid on the product info.
 	 * Offset to the right address and read them.
 	 */
 	prod_info_addr = query_addr + 6;
+	dev_dbg(&fn->dev, "Package ID appears to be at %#06x.\n", prod_info_addr);
 	error = rmi_read_block(rmi_dev, prod_info_addr, info_buf,
 				PACKAGE_ID_BYTES);
 	if (error < 0)
 		dev_warn(&fn->dev, "Failed to read package ID.\n");
 	else {
 		u16 *val = (u16 *)info_buf;
+		dev_dbg(&fn->dev, "Read %02x %02x %02x %02x.\n", info_buf[0], info_buf[1], info_buf[2], info_buf[3]);
 		data->package_id = le16_to_cpu(*val);
 		val = (u16 *)(info_buf + 2);
 		data->package_rev = le16_to_cpu(*val);
@@ -224,13 +232,15 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 	 * Offset again and read that data.
 	 */
 	prod_info_addr++;
+	dev_dbg(&fn->dev, "Build ID appears to be at %#06x.\n", prod_info_addr);
 	error = rmi_read_block(rmi_dev, prod_info_addr, info_buf,
 				BUILD_ID_BYTES);
 	if (error < 0)
 		dev_warn(&fn->dev, "Failed to read build ID.\n");
 	else {
 		u16 *val = (u16 *)info_buf;
-		data->build_id = le16_to_cpu(*val);
+		dev_dbg(&fn->dev, "Read %02x %02x %02x.\n", info_buf[0], info_buf[1], info_buf[2]);
+ 		data->build_id = le16_to_cpu(*val);
 		data->build_id += info_buf[2] * 65536;
 	}
 	dev_info(&fn->dev, "found RMI device, manufacturer: %s, product: %s, date: %s\n",
@@ -239,6 +249,60 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 	dev_info(&fn->dev, "Package: ID %#06x, rev %#06x; FW build ID: %#08x (%u).\n",
 		data->package_id, data->package_rev,
 		data->build_id, data->build_id);
+
+	query_addr += RMI_PRODUCT_ID_LENGTH;
+	if (data->properties.has_lts) {
+		error = rmi_read_block(rmi_dev, query_addr, info_buf, 1);
+		if (error < 0) {
+			dev_err(&fn->dev, "Failed to read LTS info.\n");
+			return error;
+		}
+		data->properties.slave_asic_rows = info_buf[0] & RMI_F01_QRY21_SLAVE_ROWS_MASK;
+		data->properties.slave_asic_columns = (info_buf[1] & RMI_F01_QRY21_SLAVE_COLUMNS_MASK) >> 3;
+		query_addr++;
+	}
+
+	if (data->properties.has_sensor_id) {
+		error = rmi_read_block(rmi_dev, query_addr, &data->properties.sensor_id, 1);
+		if (error < 0) {
+			dev_err(&fn->dev, "Failed to read sensor ID.\n");
+			return error;
+		}
+		query_addr++;
+	}
+
+	/* Maybe skip a block of undefined LTS registers. */
+	if (data->properties.has_lts)
+		query_addr += RMI_F01_LTS_RESERVED_SIZE;
+
+	if (data->properties.has_query42) {
+		error = rmi_read_block(rmi_dev, query_addr, info_buf, 1);
+		if (error < 0) {
+			dev_err(&fn->dev, "Failed to read additional properties.\n");
+			return error;
+		}
+		dev_dbg(&fn->dev, "F01 Query42 at %#06x was %#02x.\n",
+			query_addr, info_buf[0]);
+		data->properties.has_ds4_queries = info_buf[0] & RMI_F01_QRY42_DS4_QUERIES;
+		data->properties.has_multi_physical = info_buf[0] & RMI_F01_QRY42_MULTI_PHYS;
+		data->properties.has_guest = info_buf[0] & RMI_F01_QRY42_GUEST;
+		data->properties.has_swr = info_buf[0] & RMI_F01_QRY42_SWR;
+		data->properties.has_nominal_report_rate = info_buf[0] & RMI_F01_QRY42_NOMINAL_REPORT;
+		data->properties.has_recalibration_interval = info_buf[0] & RMI_F01_QRY42_RECAL_INTERVAL;
+		query_addr++;
+	}
+
+	if (data->properties.has_ds4_queries) {
+		error = rmi_read_block(rmi_dev, query_addr,
+				       &data->properties.ds4_block_size, 1);
+		if (error < 0) {
+			dev_err(&fn->dev, "Failed to read DS4 query block size.\n");
+			return error;
+		}
+		dev_dbg(&fn->dev, "DS4 query block size is %d.\n",
+			data->properties.ds4_block_size);
+		query_addr++;
+	}
 
 	/* read control register */
 	if (data->properties.has_adjustable_doze) {

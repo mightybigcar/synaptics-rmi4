@@ -147,6 +147,8 @@ struct rmi_driver {
 	int (*store_productid)(struct rmi_device *rmi_dev);
 	int (*set_input_params)(struct rmi_device *rmi_dev,
 				struct input_dev *input);
+	int (*enable)(struct rmi_device *rmi_dev);
+	void (*disable)(struct rmi_device *rmi_dev);
 	int (*remove)(struct rmi_device *rmi_dev);
 	void *data;
 };

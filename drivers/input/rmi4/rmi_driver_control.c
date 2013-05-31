@@ -233,57 +233,11 @@ static ssize_t rmi_driver_bsr_store(struct device *dev,
 	return count;
 }
 
-static ssize_t rmi_driver_enabled_show(struct device *dev,
-				       struct device_attribute *attr, char *buf)
-{
-	struct rmi_device *rmi_dev = to_rmi_device(dev);
-	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
-
-	return snprintf(buf, PAGE_SIZE, "%u\n", data->enabled);
-}
-
-static ssize_t rmi_driver_enabled_store(struct device *dev,
-					struct device_attribute *attr,
-					const char *buf, size_t count)
-{
-	int retval;
-	int new_value;
-	struct rmi_device *rmi_dev = to_rmi_device(dev);
-
-	if (sysfs_streq(buf, "0"))
-		new_value = false;
-	else if (sysfs_streq(buf, "1"))
-		new_value = true;
-	else
-		return -EINVAL;
-
-	if (new_value) {
-		retval = enable_sensor(rmi_dev);
-		if (retval) {
-			dev_err(dev, "Failed to enable sensor, code=%d.\n",
-				retval);
-			return -EIO;
-		}
-	} else {
-		disable_sensor(rmi_dev);
-	}
-
-	return count;
-}
-
-/** This sysfs attribute is deprecated, and will be removed in a future release.
- */
-static struct device_attribute attrs[] = {
-	__ATTR(enabled, RMI_RW_ATTR,
-	       rmi_driver_enabled_show, rmi_driver_enabled_store),
-};
-
 static struct device_attribute bsr_attribute = __ATTR(bsr, RMI_RW_ATTR,
 	       rmi_driver_bsr_show, rmi_driver_bsr_store);
 
 static int driver_ctl_cleanup(struct rmi_control_handler_data *hdata)
 {
-	int i;
 	struct device *dev = hdata->dev;
 	struct rmi_device *rmi_dev = to_rmi_device(dev);
 	struct rmi_driver_data *driver_data = dev_get_drvdata(&rmi_dev->dev);
@@ -292,8 +246,6 @@ static int driver_ctl_cleanup(struct rmi_control_handler_data *hdata)
 
 	teardown_debugfs(ctl_data);
 
-	for (i = 0; i < ARRAY_SIZE(attrs); i++)
-		device_remove_file(&rmi_dev->dev, &attrs[i]);
 	if (driver_data->pdt_props.has_bsr)
 		device_remove_file(&rmi_dev->dev, &bsr_attribute);
 
@@ -307,7 +259,6 @@ static struct rmi_control_handler_data *driver_ctl_attach(struct device *dev, vo
 	struct rmi_device *rmi_dev = to_rmi_device(dev);
 	struct driver_ctl_data *ctl_data;
 	int retval;
-	int attr_count = 0;
 	struct rmi_driver_data *driver_data = dev_get_drvdata(&rmi_dev->dev);
 
 	rmi_dev = to_rmi_device(dev);
@@ -318,13 +269,6 @@ static struct rmi_control_handler_data *driver_ctl_attach(struct device *dev, vo
 		return NULL;
 	ctl_data->rmi_dev = rmi_dev;
 
-	dev_dbg(dev, "Creating sysfs files.\n");
-	for (attr_count = 0; attr_count < ARRAY_SIZE(attrs); attr_count++) {
-		retval = device_create_file(dev, &attrs[attr_count]);
-		if (retval < 0)
-			dev_warn(dev, "Failed to create sysfs file %s.\n",
-				attrs[attr_count].attr.name);
-	}
 	dev_dbg(dev, "Checking BSR.\n");
 	if (driver_data && driver_data->pdt_props.has_bsr) {
 		retval = device_create_file(dev, &bsr_attribute);

@@ -419,7 +419,5 @@ extern struct rmi_function_driver rmi_f01_driver;
 
 int rmi_register_sensor_driver(void);
 void rmi_unregister_sensor_driver(void);
-void disable_sensor(struct rmi_device *rmi_dev);
-int enable_sensor(struct rmi_device *rmi_dev);
 
 #endif
