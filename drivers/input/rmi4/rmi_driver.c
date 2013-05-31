@@ -112,7 +112,7 @@ static void disable_polling(struct rmi_device *rmi_dev)
 	cancel_work_sync(&data->poll_work);
 }
 
-void disable_sensor(struct rmi_device *rmi_dev)
+static void disable_sensor(struct rmi_device *rmi_dev)
 {
 	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
 
@@ -133,7 +133,7 @@ void disable_sensor(struct rmi_device *rmi_dev)
 	data->enabled = false;
 }
 
-int enable_sensor(struct rmi_device *rmi_dev)
+static int enable_sensor(struct rmi_device *rmi_dev)
 {
 	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
 	struct rmi_transport_device *rmi_transport;
@@ -1177,6 +1177,8 @@ struct rmi_driver rmi_physical_driver = {
 	.store_irq_mask = rmi_driver_irq_save,
 	.restore_irq_mask = rmi_driver_irq_restore,
 	.set_input_params = rmi_driver_set_input_params,
+	.enable = enable_sensor,
+	.disable = disable_sensor,
 	.remove = rmi_driver_remove,
 };
 
