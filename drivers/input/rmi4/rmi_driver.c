@@ -967,6 +967,8 @@ static int rmi_driver_remove(struct rmi_device *rmi_dev)
 	return 0;
 }
 
+static const char *GPIO_LABEL = "attn";
+
 static int rmi_driver_probe(struct device *dev)
 {
 	struct rmi_driver *rmi_driver;
@@ -1128,20 +1130,26 @@ static int rmi_driver_probe(struct device *dev)
 	}
 
 	if (IS_ENABLED(CONFIG_RMI4_DEV) && pdata->attn_gpio) {
-		retval = gpio_export(pdata->attn_gpio, false);
-		if (retval) {
-			dev_warn(dev, "WARNING: Failed to export ATTN gpio!\n");
-			retval = 0;
-		} else {
-			retval = gpio_export_link(dev,
-						  "attn", pdata->attn_gpio);
-			if (retval) {
-				dev_warn(dev,
-					"WARNING: Failed to symlink ATTN gpio!\n");
-				retval = 0;
-			} else {
-				dev_info(dev, "Exported ATTN GPIO %d.",
-					pdata->attn_gpio);
+		retval = gpio_request(pdata->attn_gpio, GPIO_LABEL);
+		if (retval)
+			dev_warn(dev, "WARNING: Failed to request ATTN gpio %d, code=%d.\n",
+				 pdata->attn_gpio, retval);
+		else {
+			retval = gpio_export(pdata->attn_gpio, false);
+			if (retval)
+				dev_warn(dev, "WARNING: Failed to export ATTN gpio %d, code=%d!\n",
+					pdata->attn_gpio, retval);
+			else {
+				retval = gpio_export_link(dev,
+							"attn", pdata->attn_gpio);
+				if (retval) {
+					dev_warn(dev,
+						"WARNING: Failed to symlink ATTN gpio!\n");
+					retval = 0;
+				} else {
+					dev_info(dev, "Exported ATTN GPIO %d.",
+						pdata->attn_gpio);
+				}
 			}
 		}
 	}
