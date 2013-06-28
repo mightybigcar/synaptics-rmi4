@@ -22,7 +22,9 @@
 #include <linux/types.h>
 #include <linux/wait.h>
 #include <linux/debugfs.h>
+#ifdef CONFIG_HAS_EARLYSUSPEND
 #include <linux/earlysuspend.h>
+#endif
 
 enum rmi_attn_polarity {
 	RMI_ATTN_ACTIVE_LOW = 0,
@@ -128,6 +130,7 @@ struct rmi_f11_sensor_data {
 	struct rmi_f11_virtualbutton_map virtual_buttons;
 	bool type_a;
 	enum rmi_f11_sensor_type sensor_type;
+	u8 suppress_highw;
 };
 
 /**
@@ -178,7 +181,7 @@ struct rmi_button_map {
 
 struct rmi_f30_gpioled_map {
 	u8 ngpioleds;
-	u8 *map;
+	u16 *map;
 };
 
 /**

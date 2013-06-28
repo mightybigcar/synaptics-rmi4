@@ -18,7 +18,8 @@
 #include "rmi_bus.h"
 #include "rmi_version.h"
 
-#define SYNAPTICS_INPUT_DEVICE_NAME "Synaptics RMI4 Touch Sensor"
+#define SYNAPTICS_TOUCHPAD_INPUT_DEVICE_NAME "Synaptics RMI4 TouchPad Sensor"
+#define SYNAPTICS_TOUCHSCREEN_INPUT_DEVICE_NAME "Synaptics RMI4 Touchscreen Sensor"
 #define SYNAPTICS_VENDOR_ID 0x06cb
 
 
@@ -346,6 +347,8 @@ struct pdt_properties {
 	u8 reserved_2:1;
 } __attribute__((__packed__));
 
+#define NAME_BUFFER_SIZE 256
+
 struct rmi_driver_data {
 	struct list_head function_list;
 	struct rmi_device *rmi_dev;
@@ -377,6 +380,7 @@ struct rmi_driver_data {
 	int rev;
 
 	bool enabled;
+	bool probe_succeeded;
 #ifdef CONFIG_PM
 	bool suspended;
 	struct mutex suspend_mutex;
@@ -389,6 +393,8 @@ struct rmi_driver_data {
 #endif
 
 	void *data;
+	struct input_dev *input;
+	char input_phys[NAME_BUFFER_SIZE];
 };
 
 #define PDT_START_SCAN_LOCATION 0x00e9

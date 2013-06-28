@@ -204,6 +204,7 @@ struct rmi_fn_30_data {
 	struct mutex data_mutex;
 	struct gpio_chip gpio;
 	struct mutex gpio_mutex;
+	u8 suppress;
 };
 
 /* Query sysfs files */
@@ -256,6 +257,9 @@ show_store_union_struct_prototype(haptic_duration)
 /* Data sysfs files */
 show_store_union_struct_prototype(gpi_led_data)
 
+show_store_union_struct_prototype(suppress)
+
+#if 0
 /* gpio get and set */
 static void rmi_f30_gpio_data_set(struct gpio_chip *gc, unsigned nr, int val)
 {
@@ -384,7 +388,7 @@ static struct gpio_chip rmi_f30_gpio_data_core = {
 	.direction_output	= rmi_f30_gpio_data_direction_out,
 	.set			= rmi_f30_gpio_data_set,
 };
-
+#endif
 
 static struct attribute *attrs_ctrl_reg_0[] = {
 	attrify(led_sel),
@@ -473,6 +477,13 @@ static struct attribute *attrs_gpileddata[] = {
 };
 
 static struct attribute_group attrs_data = GROUP(attrs_gpileddata);
+
+static struct attribute *attrs_suppress[] = {
+	attrify(suppress),
+	NULL
+};
+
+static struct attribute_group attrs_suppress_grp = GROUP(attrs_suppress);
 
 int rmi_f30_read_control_parameters(struct rmi_device *rmi_dev,
 	struct rmi_fn_30_data *f30)
@@ -625,6 +636,7 @@ static inline void rmi_f30_free_memory(struct rmi_function *fn)
 	u8 reg_num = 0;
 	sysfs_remove_group(&fn->dev.kobj, &attrs_query);
 	sysfs_remove_group(&fn->dev.kobj, &attrs_data);
+	sysfs_remove_group(&fn->dev.kobj, &attrs_suppress_grp);
 	for (reg_num = 0; reg_num < ARRAY_SIZE(attrs_ctrl_regs); reg_num++)
 		sysfs_remove_group(&fn->dev.kobj,
 				   &attrs_ctrl_regs[reg_num]);
@@ -641,8 +653,15 @@ int rmi_f30_attention(struct rmi_function *fn,
 	bool gpiled_status = false;
 	int status = 0;
 
+	if (f30->suppress)
+		return 0;
+
 	/* Read the button data. */
 
+	if (rmi_dev->xport->attn_data) {
+		memcpy(f30->button_data_buffer, rmi_dev->xport->attn_data,
+			f30->button_bitmask_size);
+	} else {
 	error = rmi_read_block(rmi_dev, data_base_addr,
 			f30->button_data_buffer,
 			f30->button_bitmask_size);
@@ -651,6 +670,7 @@ int rmi_f30_attention(struct rmi_function *fn,
 			"%s: Failed to read button data registers.\n",
 			__func__);
 		return error;
+	}
 	}
 
 	/* Read the gpi led data. */
@@ -664,7 +684,9 @@ int rmi_f30_attention(struct rmi_function *fn,
 		return error;
 	}
 	/* Generate events for buttons that change state. */
-	for (gpiled = 0; gpiled < f30->gpioled_count; gpiled++) {
+	for (gpiled = 0; gpiled < f30->gpioled_count
+		&& gpiled < f30->control.reg_2->length; gpiled++)
+	{
 		status = f30->data.datareg_0->regs[gpiled].gpi_led_data;
 		dev_warn(&fn->dev,
 			"rmi_f30 attention gpiled=%d data status=%d\n",
@@ -696,15 +718,15 @@ static int rmi_f30_register_device(struct rmi_function *fn)
 	int rc;
 	struct rmi_device *rmi_dev = fn->rmi_dev;
 	struct rmi_fn_30_data *f30 = fn->data;
-	struct rmi_driver *driver = fn->rmi_dev->driver;
-	struct input_dev *input_dev = input_allocate_device();
+	struct rmi_driver_data *driver_data = dev_get_drvdata(&rmi_dev->dev);
+	struct input_dev *input_dev;
 
+#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
+	input_dev = input_allocate_device();
 	if (!input_dev) {
 		dev_err(&fn->dev, "Failed to allocate input device.\n");
 		return -ENOMEM;
 	}
-
-	f30->input = input_dev;
 
 	if (driver->set_input_params) {
 		rc = driver->set_input_params(rmi_dev, input_dev);
@@ -714,13 +736,19 @@ static int rmi_f30_register_device(struct rmi_function *fn)
 			goto error_free_device;
 		}
 	}
+
 	sprintf(f30->input_phys, "%s/input0", dev_name(&fn->dev));
 	input_dev->phys = f30->input_phys;
 	input_dev->dev.parent = &rmi_dev->dev;
 	input_set_drvdata(input_dev, f30);
+	set_bit(EV_SYN, input_dev->evbit);
+#else
+	input_dev = driver_data->input;
+#endif
+
+	f30->input = input_dev;
 
 	/* Set up any input events. */
-	set_bit(EV_SYN, input_dev->evbit);
 	set_bit(EV_KEY, input_dev->evbit);
 	input_dev->keycode = f30->gpioled_map;
 	input_dev->keycodesize = 1;
@@ -731,15 +759,19 @@ static int rmi_f30_register_device(struct rmi_function *fn)
 		input_set_capability(input_dev, EV_KEY, f30->gpioled_map[i]);
 	}
 
+#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
 	rc = input_register_device(input_dev);
 	if (rc < 0) {
 		dev_err(&fn->dev, "Failed to register input device.\n");
 		goto error_free_device;
 	}
+#endif
 	return 0;
 
+#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
 error_free_device:
 	input_free_device(input_dev);
+#endif
 
 	return rc;
 }
@@ -929,7 +961,7 @@ static inline int rmi_f30_initialize(struct rmi_function *fn)
 		reg_flg = 1;
 
 	f30_attrs_regs_exist[reg_num] = true;
-	regs_size = max(sizeof(struct f30_gpio_ctrl_0n) * reg_flg *
+	regs_size = max((int)sizeof(struct f30_gpio_ctrl_0n) * reg_flg *
 					instance_data->gpioled_bitmask_size, 1);
 	control->reg_0->regs = devm_kzalloc(&fn->dev, regs_size,
 					    GFP_KERNEL);
@@ -965,7 +997,7 @@ static inline int rmi_f30_initialize(struct rmi_function *fn)
 
 	reg_flg = hasgpio;
 	f30_attrs_regs_exist[reg_num] = true;
-	regs_size = max(sizeof(struct f30_gpio_ctrl_2n)*reg_flg*
+	regs_size = max((int)sizeof(struct f30_gpio_ctrl_2n)*reg_flg*
 					instance_data->gpioled_bitmask_size, 1);
 	control->reg_2->regs = devm_kzalloc(&fn->dev, regs_size,
 					    GFP_KERNEL);
@@ -989,7 +1021,7 @@ static inline int rmi_f30_initialize(struct rmi_function *fn)
 
 	reg_flg = hasgpio;
 	f30_attrs_regs_exist[reg_num] = true;
-	regs_size = max(sizeof(struct f30_gpio_ctrl_3n) * reg_flg *
+	regs_size = max((int)sizeof(struct f30_gpio_ctrl_3n) * reg_flg *
 					instance_data->gpioled_bitmask_size, 1);
 	control->reg_3->regs = devm_kzalloc(&fn->dev, regs_size,
 					    GFP_KERNEL);
@@ -1184,9 +1216,14 @@ static int rmi_f30_create_sysfs(struct rmi_function *fn)
 		dev_err(&fn->dev, "Failed to create data sysfs files.");
 		return -ENODEV;
 	}
+	if (sysfs_create_group(&fn->dev.kobj, &attrs_suppress_grp) < 0) {
+		dev_err(&fn->dev, "Failed to create suppress sysfs file.");
+		return -ENODEV;
+	}
 
 	for (reg_num = 0; reg_num < ARRAY_SIZE(attrs_ctrl_regs);
-		reg_num++) {
+		reg_num++)
+	{
 		if (f30_attrs_regs_exist[reg_num]) {
 			if (sysfs_create_group(&fn->dev.kobj,
 					&attrs_ctrl_regs[reg_num]) < 0) {
@@ -1204,7 +1241,9 @@ static int rmi_f30_create_sysfs(struct rmi_function *fn)
 static int rmi_f30_probe(struct rmi_function *fn)
 {
 	int rc;
+#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
 	struct rmi_fn_30_data *f30 = fn->data;
+#endif
 
 	rc = rmi_f30_alloc_memory(fn);
 	if (rc < 0)
@@ -1220,11 +1259,17 @@ static int rmi_f30_probe(struct rmi_function *fn)
 
 	rc = rmi_f30_create_sysfs(fn);
 	if (rc < 0)
+#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
 		goto error_uregister_exit;
+#else
+		goto error_exit;
+#endif
 	return 0;
 
+#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
 error_uregister_exit:
 	input_unregister_device(f30->input);
+#endif
 
 error_exit:
 	rmi_f30_free_memory(fn);
@@ -1242,7 +1287,6 @@ static int rmi_f30_remove(struct rmi_function *fn)
 static struct rmi_function_driver function_driver = {
 	.driver = {
 		.name = "rmi_f30",
-		.remove = f30_remove_device,
 	},
 	.func = FUNCTION_NUMBER,
 	.probe = rmi_f30_probe,
@@ -1251,6 +1295,47 @@ static struct rmi_function_driver function_driver = {
 	.attention = rmi_f30_attention,
 };
 
+static ssize_t rmi_fn_30_suppress_show(struct device *dev, struct device_attribute *attr,
+                                         char *buf)
+{
+        struct rmi_function *fn;
+        struct rmi_fn_30_data *f30;
+
+        fn = to_rmi_function(dev);
+        if (fn == NULL)
+                return -ENODEV;
+
+        f30 = fn->data;
+        if (f30 == NULL)
+                return -ENODEV;
+
+        return snprintf(buf, PAGE_SIZE, "%u\n", f30->suppress);
+}
+
+static ssize_t rmi_fn_30_suppress_store(struct device *dev, struct device_attribute *attr,
+                                         const char *buf, size_t count)
+{
+        struct rmi_function *fn;
+        struct rmi_fn_30_data *f30;
+        int suppress;
+
+        fn = to_rmi_function(dev);
+        if (fn == NULL)
+                return -ENODEV;
+
+        f30 = fn->data;
+        if (f30 == NULL)
+                return -ENODEV;
+
+        if (sscanf(buf, "%u", &suppress) != 1)
+                return -EINVAL;
+        if (suppress > 1)
+                return -EINVAL;
+
+        f30->suppress = suppress;
+
+        return count;
+}
 
 /* sysfs functions */
 /* Query */

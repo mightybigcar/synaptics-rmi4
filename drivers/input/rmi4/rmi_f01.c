@@ -392,10 +392,7 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 		dev_warn(&rmi_dev->dev,
 			 "WARNING: RMI4 device is in bootloader mode!\n");
 
-	return error;
-
  error_exit:
-	kfree(data);
 	return error;
 }
 

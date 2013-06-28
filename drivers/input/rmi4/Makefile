@@ -5,6 +5,9 @@ rmi_core-$(CONFIG_RMI4_FWLIB) += rmi_fw_update.o
 
 # Function drivers
 obj-$(CONFIG_RMI4_F11) += rmi_f11.o
+obj-$(CONFIG_RMI4_F12) += rmi_f12.o
+obj-$(CONFIG_RMI4_F30) += rmi_f30.o
+obj-$(CONFIG_RMI4_F54) += rmi_f54.o
 
 # Transport layers
 obj-$(CONFIG_RMI4_I2C) += rmi_i2c.o

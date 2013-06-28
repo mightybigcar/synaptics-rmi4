@@ -717,6 +717,17 @@ struct f11_2d_data {
 	const struct f11_2d_data_14_17	*scroll_zones;
 };
 
+struct f11_abs_pos_data {
+        int x;
+        int y;
+        int z;
+        int w_x;
+        int w_y;
+        int w_min;
+        int w_max;
+        int orientation;
+};
+
 /**
  * @axis_align - controls parameters that are useful in system prototyping
  * and bring up.
@@ -746,17 +757,23 @@ struct f11_2d_sensor {
 	u16 max_y;
 	u8 nbr_fingers;
 	u8 *data_pkt;
+	int abs_size;
 	int pkt_size;
+	struct f11_abs_pos_data *abs_pos_data;
 	u8 sensor_index;
 	u8 *button_map;
 	struct rmi_f11_virtualbutton_map virtual_buttons;
 	u32 type_a;
 	enum rmi_f11_sensor_type sensor_type;
 	struct input_dev *input;
+#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
 	struct input_dev *mouse_input;
-	struct rmi_function *fn;
-	char input_phys[NAME_BUFFER_SIZE];
 	char input_phys_mouse[NAME_BUFFER_SIZE];
+	char input_phys[NAME_BUFFER_SIZE];
+#endif
+	struct rmi_function *fn;
+	u8 suppress;
+	u8 suppress_highw;
 };
 
 /** Data pertaining to F11 in general.  For per-sensor data, see struct
