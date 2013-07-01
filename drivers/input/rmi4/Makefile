@@ -12,6 +12,8 @@ obj-$(CONFIG_RMI4_F54) += rmi_f54.o
 # Transport layers
 obj-$(CONFIG_RMI4_I2C) += rmi_i2c.o
 
+obj-$(CONFIG_RMI4_HID) += rmi_hid.o
+
 # Control modules (implementing sysfs and debugfs)
 
 ifeq ("$(CONFIG_RMI4_CONTROL)", "y")

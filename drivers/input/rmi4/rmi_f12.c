@@ -462,11 +462,16 @@ static void report_one_object(struct f12_data *f12, struct rmi_f12_object_data *
 			le16_to_cpu(object->pos_x));
 		input_report_abs(f12->input, ABS_MT_POSITION_Y,
 			le16_to_cpu(object->pos_y));
-// 		pr_debug(
-// 			"finger[%d]:%d - x:%d y:%d z:%d wx:%d wy:%d\n",
-// 			slot, object->type, le16_to_cpu(object->pos_x),
-// 			le16_to_cpu(object->pos_y), object->z,
-// 			object->wx, object->wy);
+#if 1
+ 		pr_debug(
+ 			"finger[%d]:%d - x:%d y:%d z:%d wx:%d wy:%d\n",
+ 			slot, object->type, le16_to_cpu(object->pos_x),
+ 			le16_to_cpu(object->pos_y), object->z,
+ 			object->wx, object->wy);
+#endif
+
+		if (1 /*sensor->sensor_type == rmi_f11_sensor_touchpad*/)
+			input_mt_report_pointer_emulation(f12->input, true);
 	}
 }
 
@@ -491,13 +496,20 @@ static int rmi_f12_attention(struct rmi_function *fn,
 {
 	int retval;
 	struct f12_data *f12 = fn->data;
+	struct rmi_device * rmi_dev = fn->rmi_dev;
 
-	retval = rmi_read_block(fn->rmi_dev, f12->object_address,
+	if (rmi_dev->xport->attn_data) {
+		memcpy(f12->object_buf, rmi_dev->xport->attn_data, f12->buf_size);
+		rmi_dev->xport->attn_data += f12->buf_size;
+		rmi_dev->xport->attn_size -= f12->buf_size;
+	} else {
+		retval = rmi_read_block(rmi_dev, f12->object_address,
 				f12->object_buf, f12->buf_size);
 	if (retval < 0) {
 		dev_err(&fn->dev, "Failed to read object data. Code: %d.\n",
 			retval);
 		return retval;
+	}
 	}
 
 	report_objects(f12);
@@ -508,7 +520,9 @@ static int rmi_f12_remove(struct rmi_function *fn)
 {
 	struct f12_data *f12 = fn->data;
 
+#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
 	input_unregister_device(f12->input);
+#endif
 	devm_kfree(&fn->dev, f12->object_buf);
 	devm_kfree(&fn->dev, f12);
 	fn->data = NULL;
@@ -522,7 +536,8 @@ static int rmi_f12_probe(struct rmi_function *fn)
 	int retval;
 	struct input_dev *input_dev;
 	struct rmi_device *rmi_dev = fn->rmi_dev;
-	struct rmi_driver *driver = rmi_dev->driver;
+	struct rmi_driver_data *driver_data = dev_get_drvdata(&rmi_dev->dev);
+	unsigned long input_flags;
 
 	f12 = devm_kzalloc(&fn->dev, sizeof(struct f12_data), GFP_KERNEL);
 	if (!f12)
@@ -565,6 +580,7 @@ static int rmi_f12_probe(struct rmi_function *fn)
 
 	read_sensor_tuning(fn);
 
+#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
 	input_dev = input_allocate_device();
 	if (!input_dev) {
 		retval = -ENOMEM;
@@ -581,13 +597,24 @@ static int rmi_f12_probe(struct rmi_function *fn)
 	input_dev->phys = f12->input_phys;
 	input_dev->dev.parent = &rmi_dev->dev;
 	input_set_drvdata(input_dev, f12);
+#else
+	input_dev = driver_data->input;
+#endif
 
 	set_bit(EV_SYN, input_dev->evbit);
 	set_bit(EV_ABS, input_dev->evbit);
 	input_set_capability(input_dev, EV_KEY, BTN_TOUCH);
 
-	set_bit(INPUT_PROP_DIRECT, input_dev->propbit);
-	input_mt_init_slots(input_dev, f12->max_objects);
+	if (1 /*sensor->sensor_type == rmi_f11_sensor_touchpad*/)
+		input_flags = INPUT_PROP_POINTER;
+	else
+		input_flags = INPUT_PROP_DIRECT;
+	set_bit(input_flags, input_dev->propbit);
+	input_mt_init_slots(input_dev, f12->max_objects, 0);
+
+	input_set_abs_params(input_dev, ABS_X, 0, f12->x_max, 0, 0);
+	input_set_abs_params(input_dev, ABS_Y, 0, f12->y_max, 0, 0);
+	input_set_abs_params(input_dev, ABS_PRESSURE, 0, DEFAULT_MAX_ABS_MT_PRESSURE, 0, 0);
 
 	input_set_abs_params(input_dev, ABS_MT_POSITION_X,
 			0, f12->x_max, 0, 0);
@@ -604,18 +631,35 @@ static int rmi_f12_probe(struct rmi_function *fn)
 	input_set_abs_params(input_dev, ABS_MT_TRACKING_ID,
 			DEFAULT_MIN_ABS_MT_TRACKING_ID,
 			f12->max_objects, 0, 0);
+	//input_set_abs_params(input_dev, ABS_MT_TOOL_TYPE,
+	//			0, MT_TOOL_MAX, 0, 0);
 	input_set_abs_params(input_dev, ABS_MT_TOOL_TYPE,
-				0, MT_TOOL_MAX, 0, 0);
+				0, MT_TOOL_FINGER, 0, 0);
 
+	if (1 /*sensor->sensor_type == rmi_f11_sensor_touchpad*/) {
+		set_bit(EV_KEY, input_dev->evbit);
+		set_bit(BTN_LEFT, input_dev->keybit);
+
+		set_bit(BTN_TOOL_FINGER, input_dev->keybit);
+		set_bit(BTN_TOOL_DOUBLETAP, input_dev->keybit);
+		set_bit(BTN_TOOL_TRIPLETAP, input_dev->keybit);
+		set_bit(BTN_TOOL_QUADTAP, input_dev->keybit);
+		set_bit(BTN_TOOL_QUINTTAP, input_dev->keybit);
+	}
+
+#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
 	retval = input_register_device(input_dev);
 	if (retval < 0)
 		goto error_free_dev;
+#endif
 	f12->input = input_dev;
 
 	return 0;
 
+#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
 error_free_dev:
 	input_free_device(input_dev);
+#endif
 
 error_free_data:
 	devm_kfree(&fn->dev, f12->object_buf);
