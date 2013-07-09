@@ -287,8 +287,7 @@ static void teardown_debugfs(struct rmi_hid_data *data)
 #define teardown_debugfs(data)
 #endif
 
-//#define COMMS_DEBUG(data) (IS_ENABLED(CONFIG_RMI4_DEBUG) && data->comms_debug)
-#define COMMS_DEBUG(data) 1
+#define COMMS_DEBUG(data) (IS_ENABLED(CONFIG_RMI4_DEBUG) && data->comms_debug)
 
 #define RMI_PAGE_SELECT_REGISTER 0xff
 #define RMI_HID_PAGE(addr) (((addr) >> 8) & 0xff)
