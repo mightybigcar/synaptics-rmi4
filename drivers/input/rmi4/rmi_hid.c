@@ -106,7 +106,7 @@ static struct rmi_f11_sensor_data tm2735_sensor_data[] = { {
 		.flip_y = 1,
 	},
 	.sensor_type = rmi_f11_sensor_touchpad,
-	.suppress_highw = 15,
+	.suppress_highw = 0,
 } };
 
 static int rmi_hid_set_mode(struct hid_device *hdev, u8 mode);
@@ -123,9 +123,6 @@ static struct rmi_device_platform_data tm2735_platformdata = {
 	.f11_sensor_data = tm2735_sensor_data,
 	.f11_sensor_count = ARRAY_SIZE(tm2735_sensor_data),
 	.post_resume = rmi_hid_post_resume,
-#ifdef CONFIG_RMI4_FWLIB
-	.firmware_name = "PR1483064",
-#endif
 };
 
 #define BUFFER_SIZE_INCREMENT 32
@@ -555,7 +552,6 @@ static void rmi_hid_attn_report_work(struct work_struct *work)
 	struct rmi_driver_data * drv_data;
 	unsigned long lock_flags;
 
-	//mutex_lock(&hdata->input_queue_mutex);
 	spin_lock_irqsave(&hdata->input_queue_lock, lock_flags);
 	while (hdata->input_queue_head != hdata->input_queue_tail) {
 		memset(rmi_report, 0, RMI_HID_INPUT_REPORT_LEN);
@@ -565,8 +561,10 @@ static void rmi_hid_attn_report_work(struct work_struct *work)
 		memcpy(rmi_report, queue_report, RMI_HID_INPUT_REPORT_LEN);
 		hdata->input_queue_head = (hdata->input_queue_head + 1)
 					% RMI_HID_INPUT_REPORT_QUEUE_LEN;
-		//mutex_unlock(&hdata->input_queue_mutex);
 		spin_unlock_irqrestore(&hdata->input_queue_lock, lock_flags);
+
+		dev_dbg(&xport->rmi_dev->dev, "attn = %*ph\n", RMI_HID_INPUT_REPORT_LEN,
+			rmi_report);
 
 		if (test_bit(RMI_HID_STARTED, &hdata->flags)) {
 			/* process it! */
@@ -578,10 +576,8 @@ static void rmi_hid_attn_report_work(struct work_struct *work)
 						1 /* interrupt sources */;
 			xport->rmi_dev->driver->process(xport->rmi_dev);
 		}
-		//mutex_lock(&hdata->input_queue_mutex);
 		spin_lock_irqsave(&hdata->input_queue_lock, lock_flags);
 	}
-	//mutex_unlock(&hdata->input_queue_mutex);
 	spin_unlock_irqrestore(&hdata->input_queue_lock, lock_flags);
 }
 
@@ -608,7 +604,6 @@ static int rmi_hid_raw_event(struct hid_device *hdev,
 	} else if (rmi_report->hidReportID == RMI_ATTN_REPORT_ID
 			&& test_bit(RMI_HID_STARTED, &hdata->flags))
 	{
-		//mutex_lock(&hdata->input_queue_mutex);
 		spin_lock_irqsave(&hdata->input_queue_lock, lock_flags);
 		if (hdata->input_queue_head == hdata->input_queue_tail)
 			sched_work = 1;
@@ -619,7 +614,6 @@ static int rmi_hid_raw_event(struct hid_device *hdev,
 			: RMI_HID_INPUT_REPORT_LEN);
 		hdata->input_queue_tail = (hdata->input_queue_tail + 1)
 			% RMI_HID_INPUT_REPORT_QUEUE_LEN;
-		//mutex_unlock(&hdata->input_queue_mutex);
 		spin_unlock_irqrestore(&hdata->input_queue_lock, lock_flags);
 
 		if (sched_work)
@@ -698,7 +692,6 @@ static int rmi_hid_probe(struct hid_device *hdev, const struct hid_device_id *id
 	}
 #endif
 
-	//mutex_init(&data->input_queue_mutex);
 	spin_lock_init(&data->input_queue_lock);
 	data->input_queue_head = 0;
 	data->input_queue_tail = 0;

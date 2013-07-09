@@ -448,6 +448,7 @@ static void report_one_object(struct f12_data *f12, struct rmi_f12_object_data *
 	if (object->type) {
 		u16 w_min = object->wx;
 		u16 w_max = object->wy;
+		u16 y = le16_to_cpu(object->pos_y);
 
 		if (object->wx > object->wy) {
 			w_min = object->wy;
@@ -461,7 +462,7 @@ static void report_one_object(struct f12_data *f12, struct rmi_f12_object_data *
 		input_report_abs(f12->input, ABS_MT_POSITION_X,
 			le16_to_cpu(object->pos_x));
 		input_report_abs(f12->input, ABS_MT_POSITION_Y,
-			le16_to_cpu(object->pos_y));
+			max(f12->y_max - y, 0));
 #if 1
  		pr_debug(
  			"finger[%d]:%d - x:%d y:%d z:%d wx:%d wy:%d\n",
@@ -504,12 +505,12 @@ static int rmi_f12_attention(struct rmi_function *fn,
 		rmi_dev->xport->attn_size -= f12->buf_size;
 	} else {
 		retval = rmi_read_block(rmi_dev, f12->object_address,
-				f12->object_buf, f12->buf_size);
-	if (retval < 0) {
-		dev_err(&fn->dev, "Failed to read object data. Code: %d.\n",
-			retval);
-		return retval;
-	}
+					f12->object_buf, f12->buf_size);
+		if (retval < 0) {
+			dev_err(&fn->dev, "Failed to read object data. Code: %d.\n",
+				retval);
+			return retval;
+		}
 	}
 
 	report_objects(f12);

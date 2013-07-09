@@ -1294,12 +1294,12 @@ int rmi_f11_attention(struct rmi_function *fn,
 			rmi_dev->xport->attn_data += f11->sensors[i].abs_size;
 			rmi_dev->xport->attn_size -= f11->sensors[i].abs_size;
 		} else {
-		error = rmi_read_block(rmi_dev,
-				data_base_addr + data_base_addr_offset,
-				f11->sensors[i].data_pkt,
-				f11->sensors[i].pkt_size);
-		if (error < 0)
-			return error;
+			error = rmi_read_block(rmi_dev,
+					data_base_addr + data_base_addr_offset,
+					f11->sensors[i].data_pkt,
+					f11->sensors[i].pkt_size);
+			if (error < 0)
+				return error;
 		}
 	
 

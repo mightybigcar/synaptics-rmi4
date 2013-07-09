@@ -173,7 +173,8 @@ struct f30_control {
 };
 
 struct f30_data_0n {
-	u8 gpi_led_data:1;
+//	u8 gpi_led_data:1;
+	u8 gpi_led_data:3;
 };
 
 struct f30_data_0 {
@@ -657,31 +658,37 @@ int rmi_f30_attention(struct rmi_function *fn,
 		return 0;
 
 	/* Read the button data. */
-
 	if (rmi_dev->xport->attn_data) {
 		memcpy(f30->button_data_buffer, rmi_dev->xport->attn_data,
 			f30->button_bitmask_size);
 	} else {
-	error = rmi_read_block(rmi_dev, data_base_addr,
-			f30->button_data_buffer,
-			f30->button_bitmask_size);
-	if (error < 0) {
-		dev_err(&fn->dev,
-			"%s: Failed to read button data registers.\n",
-			__func__);
-		return error;
-	}
+		error = rmi_read_block(rmi_dev, data_base_addr,
+				f30->button_data_buffer,
+				f30->button_bitmask_size);
+		if (error < 0) {
+			dev_err(&fn->dev,
+				"%s: Failed to read button data registers.\n",
+				__func__);
+			return error;
+		}
 	}
 
 	/* Read the gpi led data. */
 	f30->data.address = fn->fd.data_base_addr;
-	error = rmi_read_block(fn->rmi_dev, f30->data.address,
-		(u8 *)&f30->data, f30->gpioled_count);
+	if (rmi_dev->xport->attn_data) {
+		memcpy((u8 *)f30->data.datareg_0->regs, rmi_dev->xport->attn_data,
+			1);
+		++rmi_dev->xport->attn_data;
+		--rmi_dev->xport->attn_size;
+	} else {
+		error = rmi_read_block(fn->rmi_dev, f30->data.address,
+				(u8 *)&f30->data, f30->gpioled_count);
 
-	if (error < 0) {
-		dev_err(&fn->dev, "%s: Failed to read f30 data registers.\n",
-			__func__);
-		return error;
+		if (error < 0) {
+			dev_err(&fn->dev, "%s: Failed to read f30 data registers.\n",
+				__func__);
+			return error;
+		}
 	}
 	/* Generate events for buttons that change state. */
 	for (gpiled = 0; gpiled < f30->gpioled_count
@@ -694,8 +701,8 @@ int rmi_f30_attention(struct rmi_function *fn,
 			f30->data.datareg_0->regs[gpiled].gpi_led_data);
 		/* check if gpio */
 		if (!(f30->control.reg_0->regs[gpiled].led_sel)) {
-			if (f30->control.reg_2->regs[gpiled].dir == 0) {
-				gpiled_status = status != 0;
+			if (f30->control.reg_2->regs[gpiled].dir != 0) {
+				gpiled_status = status == 0;
 
 		/* if the gpiled data state changed from the
 		* last time report it and store the new state */
@@ -703,12 +710,13 @@ int rmi_f30_attention(struct rmi_function *fn,
 			dev_warn(&fn->dev,
 			"rmi_f30 attention call input_report_key\n");
 			input_report_key(f30->input,
-				f30->data.datareg_0->regs[gpiled].gpi_led_data,
-				gpiled_status);
+				f30->gpioled_map[gpiled], gpiled_status);
 			}
 		}
 	}
-	input_sync(f30->input); /* sync after groups of events */
+
+	input_sync(f30->input);
+
 	return 0;
 }
 
@@ -1187,6 +1195,13 @@ static inline int rmi_f30_initialize(struct rmi_function *fn)
 	regs_size = sizeof(struct f30_data_0n)*
 				instance_data->gpioled_byte_size;
 	instance_data->data.datareg_0->address = fn->fd.data_base_addr;
+	instance_data->data.datareg_0->regs = devm_kzalloc(&fn->dev, regs_size,
+						GFP_KERNEL);
+	if (!instance_data->data.datareg_0->regs) {
+		dev_err(&fn->dev, "Failed to allocate data registers.");
+		return -ENOMEM;
+	}
+
 	next_loc += sizeof(instance_data->data.datareg_0->regs);
 
 	retval = rmi_f30_read_control_parameters(rmi_dev, instance_data);
@@ -1280,8 +1295,8 @@ error_exit:
 
 static int rmi_f30_remove(struct rmi_function *fn)
 {
-	rmi_f30_free_memory(fn);
-	return 0;
+        rmi_f30_free_memory(fn);
+        return 0;
 }
 
 static struct rmi_function_driver function_driver = {

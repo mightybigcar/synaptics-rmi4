@@ -290,13 +290,13 @@ static int process_interrupt_requests(struct rmi_device *rmi_dev)
 	int error;
 
 	if (!rmi_dev->xport->attn_data) {
-	error = rmi_read_block(rmi_dev,
-				data->f01_dev->fd.data_base_addr + 1,
-				data->irq_status, data->num_of_irq_regs);
-	if (error < 0) {
-		dev_err(dev, "Failed to read irqs, code=%d\n", error);
-		return error;
-	}
+		error = rmi_read_block(rmi_dev,
+					data->f01_dev->fd.data_base_addr + 1,
+					data->irq_status, data->num_of_irq_regs);
+		if (error < 0) {
+			dev_err(dev, "Failed to read irqs, code=%d\n", error);
+			return error;
+		}
 	}
 
 	mutex_lock(&data->irq_mutex);
