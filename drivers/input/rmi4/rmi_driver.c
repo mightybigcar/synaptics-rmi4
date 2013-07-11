@@ -960,8 +960,9 @@ static int rmi_driver_remove(struct rmi_device *rmi_dev)
 {
 	disable_sensor(rmi_dev);
 
-	if (IS_ENABLED(CONFIG_HAS_EARLYSUSPEND))
-		unregister_early_suspend(&rmi_dev->early_suspend_handler);
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	unregister_early_suspend(&rmi_dev->early_suspend_handler);
+#endif
 
 	rmi_free_function_list(rmi_dev);
 	return 0;
@@ -1113,15 +1114,15 @@ static int rmi_driver_probe(struct device *dev)
 
 		mutex_init(&data->suspend_mutex);
 
-		if (IS_ENABLED(CONFIG_HAS_EARLYSUSPEND)) {
-			rmi_dev->early_suspend_handler.level =
-				EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1;
-			rmi_dev->early_suspend_handler.suspend =
-						rmi_driver_early_suspend;
-			rmi_dev->early_suspend_handler.resume =
-						rmi_driver_late_resume;
-			register_early_suspend(&rmi_dev->early_suspend_handler);
-		}
+#ifdef CONFIG_HAS_EARLYSUSPEND
+		rmi_dev->early_suspend_handler.level =
+			EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1;
+		rmi_dev->early_suspend_handler.suspend =
+					rmi_driver_early_suspend;
+		rmi_dev->early_suspend_handler.resume =
+					rmi_driver_late_resume;
+		register_early_suspend(&rmi_dev->early_suspend_handler);
+#endif
 	}
 
 	if (data->f01_dev->dev.driver) {
