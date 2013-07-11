@@ -541,15 +541,17 @@ static const struct file_operations report_count_fops = {
 	.read = report_count_read,
 };
 
-static int rmi_f11_setup_debugfs(struct f11_ctl_data *ctl_data)
+static void rmi_f11_setup_debugfs(struct f11_ctl_data *ctl_data)
 {
 	struct rmi_function *fn = ctl_data->f11_dev;
 	struct f11_data *f11 = fn->data;
 	struct dentry *entry;
 
-	if (!fn->debugfs_root)
-		return -ENODEV;
 
+	if (!fn->debugfs_root) {
+		dev_warn(&fn->dev, "%s found no debugfs root.\n", __func__);
+		return;
+	}
 	entry = debugfs_create_u16("rezero_wait",
 		RMI_RW_ATTR, fn->debugfs_root, &f11->rezero_wait_ms);
 	if (!entry)
@@ -560,7 +562,7 @@ static int rmi_f11_setup_debugfs(struct f11_ctl_data *ctl_data)
 	if (!entry || IS_ERR(entry))
 		dev_warn(&fn->dev, "Failed to create debugfs report_count.\n");
 
-	return 0;
+	return;
 }
 
 #else
@@ -573,11 +575,9 @@ static ssize_t f11_rezero_store(struct device *dev,
 				     struct device_attribute *attr,
 				     const char *buf, size_t count)
 {
-	struct rmi_function *fn = NULL;
+	struct rmi_function *fn = to_rmi_function(dev);
 	unsigned int rezero;
 	int retval = 0;
-
-	fn = to_rmi_function(dev);
 
 	if (sscanf(buf, "%u", &rezero) != 1)
 		return -EINVAL;
@@ -591,8 +591,7 @@ static ssize_t f11_rezero_store(struct device *dev,
 			.rezero = true,
 		};
 
-		retval = rmi_write_block(fn->rmi_dev,
-					fn->fd.command_base_addr,
+		retval = rmi_write_block(fn->rmi_dev, fn->fd.command_base_addr,
 					&commands, sizeof(commands));
 		if (retval < 0) {
 			dev_err(dev, "%s: failed to issue rezero command, error = %d.",
