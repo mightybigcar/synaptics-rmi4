@@ -51,10 +51,10 @@ static bool has_gesture_bits(const struct f11_2d_gesture_info *info,
 }
 
 enum finger_state_values {
-	F11_NO_FINGER	= 0x00,
-	F11_PRESENT	= 0x01,
-	F11_INACCURATE	= 0x02,
-	F11_RESERVED	= 0x03
+	F11_NO_FINGER		= 0x00,
+	F11_PRESENT		= 0x01,
+	F11_INACCURATE		= 0x02,
+	F11_PRODUCT_SPECIFIC	= 0x03
 };
 
 /** F11_INACCURATE state is overloaded to indicate pen present. */
@@ -241,12 +241,10 @@ static void rmi_f11_finger_handler(struct f11_data *f11,
 	u8 i;
 
 	for (i = 0, finger_pressed_count = 0; i < sensor->nbr_fingers; i++) {
-		/* Possible of having 4 fingers per f_statet register */
+		/* Possible of having 4 fingers per f_state register */
 		finger_state = (f_state[i / 4] >> (2 * (i % 4))) &
 					FINGER_STATE_MASK;
-		if (finger_state == F11_RESERVED) {
-			pr_err("%s: Invalid finger state[%d]:0x%02x.", __func__,
-					i, finger_state);
+		if (finger_state == F11_PRODUCT_SPECIFIC) {
 			continue;
 		} else if ((finger_state == F11_PRESENT) ||
 				(finger_state == F11_INACCURATE)) {
@@ -1177,8 +1175,7 @@ static int rmi_f11_config(struct rmi_function *fn)
 	return 0;
 }
 
-int rmi_f11_attention(struct rmi_function *fn,
-						unsigned long *irq_bits)
+int rmi_f11_attention(struct rmi_function *fn, unsigned long *irq_bits)
 {
 	struct rmi_device *rmi_dev = fn->rmi_dev;
 	struct f11_data *f11 = fn->data;
