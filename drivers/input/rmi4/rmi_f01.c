@@ -49,7 +49,7 @@ static void get_board_and_rev(struct rmi_function *fn,
 	int board = 0, rev = 0;
 	int i;
 	static const char * const pattern[] = {
-		"tm%4d-%d", "s%4d-%d", "s%4d-ver%1d"};
+		"tm%4d-%d", "s%4d-%d", "s%4d-ver%1d", "s%4d_ver%1d"};
 	u8 product_id[RMI_PRODUCT_ID_LENGTH+1];
 
 	for (i = 0; i < strlen(data->product_id); i++)
