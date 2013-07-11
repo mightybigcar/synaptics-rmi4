@@ -27,6 +27,8 @@ crash when they don't find it.
 
 * Added gpio_request() call when exporting ATTN via gpiolib.
 
+* Fix ordering of rmi bus debugfs setup.
+
 
 Updates for driver version 1.7 (final as of 2012-12-14)
 -------------------------------------------------------
