@@ -60,6 +60,28 @@
 #define RMI_F01_QRY42_NOMINAL_REPORT	(1 << 4)
 #define RMI_F01_QRY42_RECAL_INTERVAL	(1 << 5)
 
+#define RMI_F01_QRY43_01_PACKAGE_ID     (1 << 0)
+#define RMI_F01_QRY43_01_BUILD_ID       (1 << 1)
+#define RMI_F01_QRY43_01_RESET          (1 << 2)
+#define RMI_F01_QRY43_01_MASK_REV       (1 << 3)
+
+#define RMI_F01_QRY43_02_I2C_CTL	(1 << 0)
+#define RMI_F01_QRY43_02_SPI_CTL	(1 << 1)
+#define RMI_F01_QRY43_02_ATTN_CTL	(1 << 2)
+#define RMI_F01_QRY43_02_WIN8		(1 << 3)
+#define RMI_F01_QRY43_02_TIMESTAMP	(1 << 4)
+
+#define RMI_F01_QRY43_03_TOOL_ID	(1 << 0)
+#define RMI_F01_QRY43_03_FW_REVISION	(1 << 1)
+
+#define RMI_F01_QRY44_RST_ENABLED	(1 << 0)
+#define RMI_F01_QRY44_RST_POLARITY	(1 << 1)
+#define RMI_F01_QRY44_PULLUP_ENABLED	(1 << 2)
+#define RMI_F01_QRY44_RST_PIN_MASK	0xF0
+
+#define RMI_TOOL_ID_LENGTH		16
+#define RMI_FW_REVISION_LENGTH		16
+
 struct f01_basic_properties {
 	u8 manufacturer_id;
 	bool has_lts;
@@ -86,7 +108,38 @@ struct f01_basic_properties {
 	bool has_nominal_report_rate;
 	bool has_recalibration_interval;
 
-	u8 ds4_block_size;
+	/* Tells how many of the Query43.xx registers are present.
+	 */
+	u8 ds4_query_length;
+
+	/* Query 43.1 */
+	bool has_package_id_query;
+	bool has_build_id_query;
+	bool has_reset_query;
+	bool has_maskrev_query;
+
+	/* Query 43.2 */
+	bool has_i2c_control;
+	bool has_spi_control;
+	bool has_attn_control;
+	bool has_win8_vendor_info;
+	bool has_timestamp;
+
+	/* Query 43.3 */
+	bool has_tool_id_query;
+	bool has_fw_revision_query;
+
+	/* Query 44 */
+	bool reset_enabled;
+	bool reset_polarity;
+	bool pullup_enabled;
+	u8 reset_pin;
+
+	/* Query 45 */
+	char tool_id[RMI_TOOL_ID_LENGTH + 1];
+
+	/* Query 46 */
+	char fw_revision[RMI_FW_REVISION_LENGTH + 1];
 };
 
 /** The status code field reports the most recent device status event.
