@@ -771,7 +771,7 @@ static void rmi_hid_remove(struct hid_device *hdev)
 }
 
 static const struct hid_device_id rmi_hid_id[] = {
-	{ HID_DEVICE(BUS_I2C, HID_GROUP_MULTITOUCH, 0x06cb, HID_ANY_ID),
+	{ HID_DEVICE(BUS_I2C, HID_GROUP_ANY, 0x06cb, HID_ANY_ID),
 		.driver_data = 0 },
 	{ HID_USB_DEVICE(0x06cb, HID_ANY_ID),
 		.driver_data = 0 },
