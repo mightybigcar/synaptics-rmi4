@@ -704,13 +704,15 @@ int rmi_f30_attention(struct rmi_function *fn,
 			if (f30->control.reg_2->regs[gpiled].dir != 0) {
 				gpiled_status = status == 0;
 
-		/* if the gpiled data state changed from the
-		* last time report it and store the new state */
-		/* Generate an event here. */
-			dev_warn(&fn->dev,
-			"rmi_f30 attention call input_report_key\n");
-			input_report_key(f30->input,
-				f30->gpioled_map[gpiled], gpiled_status);
+				/*
+				 * if the gpiled data state changed from the
+				 * last time report it and store the new state
+				 * Generate an event here. 
+				 */
+				dev_dbg(&fn->dev,
+					"rmi_f30 attention call input_report_key\n");
+				input_report_key(f30->input,
+					f30->gpioled_map[gpiled], gpiled_status);
 			}
 		}
 	}
