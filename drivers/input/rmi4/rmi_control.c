@@ -20,10 +20,10 @@ static struct rmi_control_handler_data *get_handler_data(struct device *dev,
 
 	list_for_each_entry(hdata, &handler->list, list) {
 		if (hdata->dev == dev)
-			break;
+			return hdata;
 	}
 
-	return hdata;
+	return NULL;
 }
 
 static int rmi_ctl_cleanup(struct device *dev, void *data)

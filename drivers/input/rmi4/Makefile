@@ -19,6 +19,7 @@ obj-$(CONFIG_RMI4_HID) += rmi_hid.o
 ifeq ("$(CONFIG_RMI4_CONTROL)", "y")
 obj-$(CONFIG_RMI4_CORE) += rmi_control.o rmi_f01_control.o rmi_driver_control.o
 obj-$(CONFIG_RMI4_F11) += rmi_f11_control.o
+obj-$(CONFIG_RMI4_F12) += rmi_f12_control.o
 endif
 
 
