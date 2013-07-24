@@ -29,11 +29,7 @@ struct f12_ctl_data {
 static int rmi_f12_setup_debugfs(struct f12_ctl_data *ctl_data)
 {
 	char fname[NAME_BUFFER_SIZE];
-	pr_info("%s: ctl_data (%p)\n", __func__, ctl_data);
-	struct f12_data *f12 = ctl_data->f12;
-	pr_info("%s: f12 (%p)\n", __func__, ctl_data);
 	struct rmi_function *fn = ctl_data->f12_dev;
-	pr_info("%s: fn (%p)\n", __func__, fn);
 	struct dentry *f12_root;
 
 	if (!fn->debugfs_root)
@@ -224,7 +220,6 @@ static int f12_ctl_cleanup(struct rmi_control_handler_data *hdata)
 	ctl_data = container_of(hdata, struct f12_ctl_data, handler_data);
 
 	if (ctl_data->f12_dev->debugfs_root) {
-		pr_info("%s: calling debugfs_remove_recursive\n", __func__);
 		debugfs_remove_recursive(ctl_data->f12_dev->debugfs_root);
 		ctl_data->f12_dev->debugfs_root = NULL;
 	}
