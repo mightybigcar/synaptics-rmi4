@@ -351,7 +351,7 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 		query_addr++;
 		if (error < 0)
 			dev_warn(&fn->dev, "Failed to read F01_RMI_QUERY44, code: %d.\n",
-				i, error);
+				error);
 		else {
 			props->reset_enabled = val & RMI_F01_QRY44_RST_ENABLED;
 			props->reset_polarity = val & RMI_F01_QRY44_RST_POLARITY;
@@ -368,7 +368,7 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 		error = rmi_read_block(rmi_dev, query_addr, props->tool_id, RMI_TOOL_ID_LENGTH);
 		if (error < 0)
 			dev_warn(&fn->dev, "Failed to read F01_RMI_QUERY45, code: %d.\n",
-				 i, error);
+				 error);
 		/* This is a so-called "packet register", so address map
 		 * increments only by one. */
 		query_addr++;
@@ -380,7 +380,7 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 		error = rmi_read_block(rmi_dev, query_addr, props->fw_revision, RMI_FW_REVISION_LENGTH);
 		if (error < 0)
 			dev_warn(&fn->dev, "Failed to read F01_RMI_QUERY46, code: %d.\n",
-				 i, error);
+				 error);
 		/* This is a so-called "packet register", so address map
 		 * increments only by one. */
 		query_addr++;

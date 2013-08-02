@@ -230,6 +230,39 @@ static ssize_t rmi_fn_01_manufacturer_show(struct device *dev,
 			data->properties.manufacturer_id);
 }
 
+static ssize_t rmi_fn_01_slave_rows_show(struct device *dev,
+					   struct device_attribute *attr,
+					   char *buf)
+{
+	struct rmi_function *fn = to_rmi_function(dev);
+	struct f01_data *data = fn->data;
+
+	return snprintf(buf, PAGE_SIZE, "%d\n",
+			data->properties.slave_asic_rows);
+}
+
+static ssize_t rmi_fn_01_slave_columns_show(struct device *dev,
+					 struct device_attribute *attr,
+					 char *buf)
+{
+	struct rmi_function *fn = to_rmi_function(dev);
+	struct f01_data *data = fn->data;
+
+	return snprintf(buf, PAGE_SIZE, "%d\n",
+			data->properties.slave_asic_columns);
+}
+
+static ssize_t rmi_fn_01_sensor_id_show(struct device *dev,
+					 struct device_attribute *attr,
+					 char *buf)
+{
+	struct rmi_function *fn = to_rmi_function(dev);
+	struct f01_data *data = fn->data;
+
+	return snprintf(buf, PAGE_SIZE, "%d\n",
+			data->properties.sensor_id);
+}
+
 static ssize_t rmi_fn_01_serialization_show(struct device *dev,
 				       struct device_attribute *attr,
 				       char *buf)
@@ -702,6 +735,15 @@ static struct device_attribute dev_attr_productid =
 static struct device_attribute dev_attr_manufacturer =
 	__ATTR(manufacturer, RMI_RO_ATTR,
 	       rmi_fn_01_manufacturer_show, NULL);
+static struct device_attribute dev_attr_slave_rows =
+	__ATTR(slave_rows, RMI_RO_ATTR,
+		rmi_fn_01_slave_rows_show, NULL);
+static struct device_attribute dev_attr_slave_columns =
+	__ATTR(slave_columns, RMI_RO_ATTR,
+	       rmi_fn_01_slave_columns_show, NULL);
+static struct device_attribute dev_attr_sensor_id =
+	__ATTR(sensor_id, RMI_RO_ATTR,
+		rmi_fn_01_sensor_id_show, NULL);
 
 /* control register access */
 static struct device_attribute dev_attr_sleepmode =
@@ -780,7 +822,7 @@ static int rmi_f01_create_sysfs(struct rmi_function *fn)
 		dev_err(&fn->dev, "Failed to create query sysfs files.");
 		return -ENODEV;
 	}
-	if (data->properties.has_lts) {
+	if (data->properties.has_adjustable_doze) {
 		retval = sysfs_create_file(&fn->dev.kobj,
 			&dev_attr_doze_interval.attr);
 		if (retval < 0) {
@@ -804,6 +846,20 @@ static int rmi_f01_create_sysfs(struct rmi_function *fn)
 			goto err_remove_sysfs_wakeup_threshold;
 		}
 	}
+	if (data->properties.has_lts) {
+		retval = sysfs_create_file(&fn->dev.kobj,
+			&dev_attr_slave_rows.attr);
+		dev_warn(&fn->dev, "Failed to creat sysfs file for slave rows.\n");
+		retval = sysfs_create_file(&fn->dev.kobj,
+			&dev_attr_slave_columns.attr);
+		dev_warn(&fn->dev, "Failed to creat sysfs file for slave columns.\n");
+	}
+	if (data->properties.has_sensor_id) {
+		retval = sysfs_create_file(&fn->dev.kobj,
+					   &dev_attr_sensor_id.attr);
+		dev_warn(&fn->dev, "Failed to creat sysfs file for sensor id.\n");
+	}
+
 	return 0;
 
 err_remove_sysfs_wakeup_threshold:

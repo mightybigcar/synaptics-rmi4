@@ -264,7 +264,7 @@ static int rmi_i2c_probe(struct i2c_client *client,
 		dev_err(&client->dev, "no platform data\n");
 		return -EINVAL;
 	}
-	dev_info(&client->dev, "Probing %s at %#02x (IRQ %d).\n",
+	dev_dbg(&client->dev, "Probing %s at %#02x (GPIO %d).\n",
 		pdata->sensor_name ? pdata->sensor_name : "-no name-",
 		client->addr, pdata->attn_gpio);
 
