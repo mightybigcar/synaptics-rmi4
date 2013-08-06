@@ -172,11 +172,10 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 	props->has_sensor_id =
 			!!(basic_query[1] & RMI_F01_QRY1_HAS_SENSOR_ID);
 	props->has_adjustable_doze =
-				basic_query[1] & RMI_F01_QRY1_HAS_ADJ_DOZE;
+			basic_query[1] & RMI_F01_QRY1_HAS_ADJ_DOZE;
 	props->has_adjustable_doze_holdoff =
-				basic_query[1] & RMI_F01_QRY1_HAS_ADJ_DOZE_HOFF;
-	props->has_query42 =
-				basic_query[1] & RMI_F01_QRY1_HAS_PROPS_2;
+			basic_query[1] & RMI_F01_QRY1_HAS_ADJ_DOZE_HOFF;
+	props->has_query42 = basic_query[1] & RMI_F01_QRY1_HAS_PROPS_2;
 
 	snprintf(props->dom, sizeof(props->dom),
 		"20%02d/%02d/%02d",
@@ -184,8 +183,7 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 		basic_query[6] & RMI_F01_QRY6_MONTH_MASK,
 		basic_query[7] & RMI_F01_QRY7_DAY_MASK);
 
-	memcpy(props->product_id, &basic_query[11],
-	       RMI_PRODUCT_ID_LENGTH);
+	memcpy(props->product_id, &basic_query[11], RMI_PRODUCT_ID_LENGTH);
 	props->product_id[RMI_PRODUCT_ID_LENGTH] = '\0';
 	query_addr += 11;
 
