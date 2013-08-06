@@ -187,7 +187,6 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 	props->product_id[RMI_PRODUCT_ID_LENGTH] = '\0';
 	query_addr += 11;
 
-	dev_dbg(&fn->dev, "Product ID appears to be at %#06x.\n", query_addr);
 	error = rmi_read_block(rmi_dev, query_addr, data->product_id,
 				RMI_PRODUCT_ID_LENGTH);
 	if (error < 0) {
@@ -236,8 +235,6 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 			dev_err(&fn->dev, "Failed to read additional properties.\n");
 			return error;
 		}
-		dev_dbg(&fn->dev, "F01 Query42 at %#06x was %#02x.\n",
-			query_addr, info_buf[0]);
 		props->has_ds4_queries = info_buf[0] & RMI_F01_QRY42_DS4_QUERIES;
 		props->has_multi_physical = info_buf[0] & RMI_F01_QRY42_MULTI_PHYS;
 		props->has_guest = info_buf[0] & RMI_F01_QRY42_GUEST;
@@ -254,8 +251,6 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 			dev_err(&fn->dev, "Failed to read DS4 query length size.\n");
 			return error;
 		}
-		dev_dbg(&fn->dev, "DS4 query length is %d.\n",
-			props->ds4_query_length);
 		query_addr++;
 	}
 
@@ -268,7 +263,6 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 				i, error);
 			continue;
 		}
-		dev_dbg(&fn->dev, "F01_RMI_QUERY43.%02d is %#04x.\n", i, val);
 		switch (i) {
 		case 1:
 			props->has_package_id_query = val & RMI_F01_QRY43_01_PACKAGE_ID;
@@ -292,17 +286,6 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 				 i);
 		}
 	}
-	dev_dbg(&fn->dev, "has_package_id_query? %d\n", props->has_package_id_query);
-	dev_dbg(&fn->dev, "has_build_id_query? %d\n", props->has_build_id_query);
-	dev_dbg(&fn->dev, "has_reset_query? %d\n", props->has_reset_query);
-	dev_dbg(&fn->dev, "has_maskrev_query? %d\n", props->has_maskrev_query);
-	dev_dbg(&fn->dev, "has_i2c_control? %d\n", props->has_i2c_control);
-	dev_dbg(&fn->dev, "has_spi_control? %d\n", props->has_spi_control);
-	dev_dbg(&fn->dev, "has_attn_control? %d\n", props->has_attn_control);
-	dev_dbg(&fn->dev, "has_win8_vendor_info? %d\n", props->has_win8_vendor_info);
-	dev_dbg(&fn->dev, "has_timestamp? %d\n", props->has_timestamp);
-	dev_dbg(&fn->dev, "has_tool_id_query? %d\n", props->has_tool_id_query);
-	dev_dbg(&fn->dev, "has_fw_revision_query? %d\n", props->has_fw_revision_query);
 
 	/* If present, the ASIC package ID registers are overlaid on the
 	 * product ID. Go back to the right address (saved previously) and
@@ -318,11 +301,8 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 			data->package_id = le16_to_cpu(*val);
 			val = (u16 *)(info_buf + 2);
 			data->package_rev = le16_to_cpu(*val);
-			dev_info(&fn->dev, "Package: ID %#06x, rev %#06x.\n",
-				 data->package_id, data->package_rev);
 		}
-	} else
-		dev_info(&fn->dev, "Package info not available.\n");
+	}
 	prod_info_addr++;
 
 	/* The firmware build id (if present) is similarly overlaid on product
@@ -337,11 +317,10 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 			u16 *val = (u16 *)info_buf;
 			data->build_id = le16_to_cpu(*val);
 			data->build_id += info_buf[2] * 65536;
-			dev_info(&fn->dev, "FW build ID: %#08x (%u).\n",
+			dev_dbg(&fn->dev, "FW build ID: %#08x (%u).\n",
 				data->build_id, data->build_id);
 		}
-	} else
-		dev_info(&fn->dev, "FW build ID not available.\n");
+	}
 
 	if (props->has_reset_query) {
 		u8 val;
@@ -355,10 +334,6 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 			props->reset_polarity = val & RMI_F01_QRY44_RST_POLARITY;
 			props->pullup_enabled = val & RMI_F01_QRY44_PULLUP_ENABLED;
 			props->reset_pin = (val & RMI_F01_QRY44_RST_PIN_MASK) >> 4;
-			dev_dbg(&fn->dev, "reset_enabled? %d\n", props->reset_enabled);
-			dev_dbg(&fn->dev, "reset_polarity? %d\n", props->reset_polarity);
-			dev_dbg(&fn->dev, "pullup_enabled? %d\n", props->pullup_enabled);
-			dev_dbg(&fn->dev, "reset_pin = %d\n", props->reset_pin);
 		}
 	}
 
@@ -371,7 +346,6 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 		 * increments only by one. */
 		query_addr++;
 		props->tool_id[RMI_TOOL_ID_LENGTH] = '\0';
-		dev_dbg(&fn->dev, "Tool ID = \"%s\"\n", props->tool_id);
 	}
 
 	if (props->has_fw_revision_query) {
@@ -383,7 +357,6 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 		 * increments only by one. */
 		query_addr++;
 		props->tool_id[RMI_FW_REVISION_LENGTH] = '\0';
-		dev_dbg(&fn->dev, "FW revision = \"%s\"\n", props->fw_revision);
 	}
 
 	/* read control register */

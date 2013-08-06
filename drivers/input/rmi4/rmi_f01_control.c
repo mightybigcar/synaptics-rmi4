@@ -180,32 +180,30 @@ static const struct file_operations interrupt_enable_fops = {
 static ssize_t query_write(struct file *filp,
 		const char __user *buffer, size_t size, loff_t *offset) {
 	char buf[size];
-	u8 query;
+	unsigned int query;
+	int retval;
 	struct f01_debugfs_data *data = filp->private_data;
 	struct f01_data *f01 = data->fn->data;
-	struct f01_basic_properties *props = &data->fn->properties;
+	struct f01_basic_properties *props = &f01->properties;
 
 	retval = copy_from_user(buf, buffer, size);
 	if (retval)
 		return -EFAULT;
-	
+
 	if (sscanf(buf, "%u", &query) != 1)
 		return -EINVAL;
-	
+
 	dev_dbg(&data->fn->dev, "QUERY %d\n", query);
 	switch (query) {
 	case 0:
 		dev_dbg(&data->fn->dev, "Manufacturer: %d.\n", props->manufacturer_id);
 		break;
 	case 1:
-		dev_dbg(&data->fn->dev, "Has custom map? %d\n", props->has_custom_map);
-		dev_dbg(&data->fn->dev, "Non-compliant? %d\n", props->noncompliant);
 		dev_dbg(&data->fn->dev, "Has LTS? %d\n", props->has_lts);
 		dev_dbg(&data->fn->dev, "has_sensor_id? %d\n", props->has_sensor_id);
-		dev_dbg(&data->fn->dev, "has_charger_input? %d\n", props->has_charger_input);
 		dev_dbg(&data->fn->dev, "has_adjustable_doze? %d\n", props->has_adjustable_doze);
 		dev_dbg(&data->fn->dev, "has_adjustable_doze_holdoff? %d\n", props->has_adjustable_doze_holdoff);
-		dev_dbg(&data->fn->dev, "has_query42? %d\n", props->has_query42);		
+		dev_dbg(&data->fn->dev, "has_query42? %d\n", props->has_query42);
 		break;
 	case 5:
 		dev_dbg(&data->fn->dev, "Date of manufacture: %s\n", props->dom);
@@ -216,16 +214,16 @@ static ssize_t query_write(struct file *filp,
 	case 17:
 		if (props->has_package_id_query)
 			dev_dbg(&data->fn->dev, "Package ID %#06x, rev %#06x.\n",
-				 props->package_id, props->package_rev);
+				 f01->package_id, f01->package_rev);
 		else
-			dev_dbg(&data->fn-.dev, "Not present.\n");
+			dev_dbg(&data->fn->dev, "Not present.\n");
 		break;
 	case 18:
 		if (props->has_build_id_query)
 			dev_dbg(&data->fn->dev, "FW build ID: %#08x (%u).\n",
-				data->build_id, data->build_id);
+				f01->build_id, f01->build_id);
 		else
-			dev_dbg(&data->fn-.dev, "Not present.\n");
+			dev_dbg(&data->fn->dev, "Not present.\n");
 		break;
 	case 22:
 		dev_dbg(&data->fn->dev, "Sensor ID: %d\n", props->sensor_id);
@@ -243,17 +241,23 @@ static ssize_t query_write(struct file *filp,
 		}
 		break;
 	case 43:
-		dev_dbg(&data->fn->dev, "has_package_id_query? %d\n", props->has_package_id_query);
-		dev_dbg(&data->fn->dev, "has_build_id_query? %d\n", props->has_build_id_query);
-		dev_dbg(&data->fn->dev, "has_reset_query? %d\n", props->has_reset_query);
-		dev_dbg(&data->fn->dev, "has_maskrev_query? %d\n", props->has_maskrev_query);
-		dev_dbg(&data->fn->dev, "has_i2c_control? %d\n", props->has_i2c_control);
-		dev_dbg(&data->fn->dev, "has_spi_control? %d\n", props->has_spi_control);
-		dev_dbg(&data->fn->dev, "has_attn_control? %d\n", props->has_attn_control);
-		dev_dbg(&data->fn->dev, "has_win8_vendor_info? %d\n", props->has_win8_vendor_info);
-		dev_dbg(&data->fn->dev, "has_timestamp? %d\n", props->has_timestamp);
-		dev_dbg(&data->fn->dev, "has_tool_id_query? %d\n", props->has_tool_id_query);
-		dev_dbg(&data->fn->dev, "has_fw_revision_query? %d\n", props->has_fw_revision_query);
+		if (props->has_ds4_queries) {
+			dev_dbg(&data->fn->dev, "DS4 query length is %d.\n",
+						props->ds4_query_length);
+			dev_dbg(&data->fn->dev, "has_package_id_query? %d\n", props->has_package_id_query);
+			dev_dbg(&data->fn->dev, "has_build_id_query? %d\n", props->has_build_id_query);
+			dev_dbg(&data->fn->dev, "has_reset_query? %d\n", props->has_reset_query);
+			dev_dbg(&data->fn->dev, "has_maskrev_query? %d\n", props->has_maskrev_query);
+			dev_dbg(&data->fn->dev, "has_i2c_control? %d\n", props->has_i2c_control);
+			dev_dbg(&data->fn->dev, "has_spi_control? %d\n", props->has_spi_control);
+			dev_dbg(&data->fn->dev, "has_attn_control? %d\n", props->has_attn_control);
+			dev_dbg(&data->fn->dev, "has_win8_vendor_info? %d\n", props->has_win8_vendor_info);
+			dev_dbg(&data->fn->dev, "has_timestamp? %d\n", props->has_timestamp);
+			dev_dbg(&data->fn->dev, "has_tool_id_query? %d\n", props->has_tool_id_query);
+			dev_dbg(&data->fn->dev, "has_fw_revision_query? %d\n", props->has_fw_revision_query);
+		} else {
+			dev_dbg(&data->fn->dev, "Not present.\n");
+		}
 		break;
 	case 44:
 		if (props->has_reset_query) {
@@ -264,6 +268,7 @@ static ssize_t query_write(struct file *filp,
 		} else {
 			dev_dbg(&data->fn->dev, "Not present.\n");
 		}
+		break;
 	case 45:
 		if (props->has_tool_id_query)
 			dev_dbg(&data->fn->dev, "Tool ID = \"%s\"\n", props->tool_id);
@@ -280,11 +285,11 @@ static ssize_t query_write(struct file *filp,
 		dev_dbg(&data->fn->dev, "Unknown or invalid query.\n");
 		return -EINVAL;
 	}
-	
+
 	return size;
 }
 
-static const struct file_operations interrupt_enable_fops = {
+static const struct file_operations query_fops = {
 	.owner = THIS_MODULE,
 	.open = f01_debug_open,
 	.release = f01_debug_release,
