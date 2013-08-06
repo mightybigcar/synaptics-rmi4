@@ -177,6 +177,120 @@ static const struct file_operations interrupt_enable_fops = {
 	.write = interrupt_enable_write,
 };
 
+static ssize_t query_write(struct file *filp,
+		const char __user *buffer, size_t size, loff_t *offset) {
+	char buf[size];
+	u8 query;
+	struct f01_debugfs_data *data = filp->private_data;
+	struct f01_data *f01 = data->fn->data;
+	struct f01_basic_properties *props = &data->fn->properties;
+
+	retval = copy_from_user(buf, buffer, size);
+	if (retval)
+		return -EFAULT;
+	
+	if (sscanf(buf, "%u", &query) != 1)
+		return -EINVAL;
+	
+	dev_dbg(&data->fn->dev, "QUERY %d\n", query);
+	switch (query) {
+	case 0:
+		dev_dbg(&data->fn->dev, "Manufacturer: %d.\n", props->manufacturer_id);
+		break;
+	case 1:
+		dev_dbg(&data->fn->dev, "Has custom map? %d\n", props->has_custom_map);
+		dev_dbg(&data->fn->dev, "Non-compliant? %d\n", props->noncompliant);
+		dev_dbg(&data->fn->dev, "Has LTS? %d\n", props->has_lts);
+		dev_dbg(&data->fn->dev, "has_sensor_id? %d\n", props->has_sensor_id);
+		dev_dbg(&data->fn->dev, "has_charger_input? %d\n", props->has_charger_input);
+		dev_dbg(&data->fn->dev, "has_adjustable_doze? %d\n", props->has_adjustable_doze);
+		dev_dbg(&data->fn->dev, "has_adjustable_doze_holdoff? %d\n", props->has_adjustable_doze_holdoff);
+		dev_dbg(&data->fn->dev, "has_query42? %d\n", props->has_query42);		
+		break;
+	case 5:
+		dev_dbg(&data->fn->dev, "Date of manufacture: %s\n", props->dom);
+		break;
+	case 11:
+		dev_dbg(&data->fn->dev, "Product ID: %s\n", props->product_id);
+		break;
+	case 17:
+		if (props->has_package_id_query)
+			dev_dbg(&data->fn->dev, "Package ID %#06x, rev %#06x.\n",
+				 props->package_id, props->package_rev);
+		else
+			dev_dbg(&data->fn-.dev, "Not present.\n");
+		break;
+	case 18:
+		if (props->has_build_id_query)
+			dev_dbg(&data->fn->dev, "FW build ID: %#08x (%u).\n",
+				data->build_id, data->build_id);
+		else
+			dev_dbg(&data->fn-.dev, "Not present.\n");
+		break;
+	case 22:
+		dev_dbg(&data->fn->dev, "Sensor ID: %d\n", props->sensor_id);
+		break;
+	case 42:
+		if (props->has_query42) {
+			dev_dbg(&data->fn->dev, "Has DS4 Querys? %d\n", props->has_ds4_queries);
+			dev_dbg(&data->fn->dev, "Has multi physical? %d\n", props->has_multi_physical);
+			dev_dbg(&data->fn->dev, "Has guest? %d\n", props->has_guest);
+			dev_dbg(&data->fn->dev, "Has SWR? %d\n", props->has_swr);
+			dev_dbg(&data->fn->dev, "Has nominal report rate? %d\n", props->has_nominal_report_rate);
+			dev_dbg(&data->fn->dev, "Has recalibration interval? %d\n", props->has_recalibration_interval);
+		} else {
+			dev_dbg(&data->fn->dev, "Not present.\n");
+		}
+		break;
+	case 43:
+		dev_dbg(&data->fn->dev, "has_package_id_query? %d\n", props->has_package_id_query);
+		dev_dbg(&data->fn->dev, "has_build_id_query? %d\n", props->has_build_id_query);
+		dev_dbg(&data->fn->dev, "has_reset_query? %d\n", props->has_reset_query);
+		dev_dbg(&data->fn->dev, "has_maskrev_query? %d\n", props->has_maskrev_query);
+		dev_dbg(&data->fn->dev, "has_i2c_control? %d\n", props->has_i2c_control);
+		dev_dbg(&data->fn->dev, "has_spi_control? %d\n", props->has_spi_control);
+		dev_dbg(&data->fn->dev, "has_attn_control? %d\n", props->has_attn_control);
+		dev_dbg(&data->fn->dev, "has_win8_vendor_info? %d\n", props->has_win8_vendor_info);
+		dev_dbg(&data->fn->dev, "has_timestamp? %d\n", props->has_timestamp);
+		dev_dbg(&data->fn->dev, "has_tool_id_query? %d\n", props->has_tool_id_query);
+		dev_dbg(&data->fn->dev, "has_fw_revision_query? %d\n", props->has_fw_revision_query);
+		break;
+	case 44:
+		if (props->has_reset_query) {
+			dev_dbg(&data->fn->dev, "reset_enabled? %d\n", props->reset_enabled);
+			dev_dbg(&data->fn->dev, "reset_polarity? %d\n", props->reset_polarity);
+			dev_dbg(&data->fn->dev, "pullup_enabled? %d\n", props->pullup_enabled);
+			dev_dbg(&data->fn->dev, "reset_pin = %d\n", props->reset_pin);
+		} else {
+			dev_dbg(&data->fn->dev, "Not present.\n");
+		}
+	case 45:
+		if (props->has_tool_id_query)
+			dev_dbg(&data->fn->dev, "Tool ID = \"%s\"\n", props->tool_id);
+		else
+			dev_dbg(&data->fn->dev, "Not present.\n");
+		break;
+	case 46:
+		if (props->has_fw_revision_query)
+			dev_dbg(&data->fn->dev, "FW revision = \"%s\"\n", props->fw_revision);
+		else
+			dev_dbg(&data->fn->dev, "Not present.\n");
+		break;
+	default:
+		dev_dbg(&data->fn->dev, "Unknown or invalid query.\n");
+		return -EINVAL;
+	}
+	
+	return size;
+}
+
+static const struct file_operations interrupt_enable_fops = {
+	.owner = THIS_MODULE,
+	.open = f01_debug_open,
+	.release = f01_debug_release,
+	.write = query_write,
+};
+
 static int rmi_f01_setup_debugfs(struct f01_ctl_data *ctl_data)
 {
 	struct rmi_function *fn = ctl_data->f01_dev;
@@ -187,6 +301,9 @@ static int rmi_f01_setup_debugfs(struct f01_ctl_data *ctl_data)
 
 	entry = debugfs_create_file("interrupt_enable", RMI_RW_ATTR,
 			fn->debugfs_root, fn, &interrupt_enable_fops);
+
+	entry = debugfs_create_file("query", RMI_WO_ATTR,
+			fn->debugfs_root, fn, &query_fops);
 	if (!entry)
 		dev_warn(&fn->dev,
 			 "Failed to create debugfs interrupt_enable.\n");
