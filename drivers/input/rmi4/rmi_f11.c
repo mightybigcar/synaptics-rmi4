@@ -337,28 +337,25 @@ static int f11_2d_construct_data(struct f11_2d_sensor *sensor)
 	}
 
 	if (query->has_pinch) {
-		data->pinch = (struct f11_2d_data_10 *)&sensor->data_pkt[i];
+		data->pinch = &sensor->data_pkt[i];
 		i++;
 	}
 
 	if (query->has_flick) {
 		if (query->has_pinch) {
-			data->flick = (struct f11_2d_data_10_12 *)data->pinch;
+			data->flick = data->pinch;
 			i += 2;
 		} else {
-			data->flick = (struct f11_2d_data_10_12 *)
-					&sensor->data_pkt[i];
+			data->flick = &sensor->data_pkt[i];
 			i += 3;
 		}
 	}
 
 	if (query->has_rotate) {
 		if (query->has_flick) {
-			data->rotate = (struct f11_2d_data_11_12 *)
-					(data->flick + 1);
+			data->rotate = data->flick + 1;
 		} else {
-			data->rotate = (struct f11_2d_data_11_12 *)
-					&sensor->data_pkt[i];
+			data->rotate = &sensor->data_pkt[i];
 			i += 2;
 		}
 	}

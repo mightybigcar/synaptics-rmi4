@@ -675,67 +675,19 @@ struct f11_2d_ctrl {
 #define RMI_F11_SCROLLZONE			(1 << 3)
 #define RMI_F11_GESTURE_FINGER_COUNT_MASK	0x70
 
-/**
- * @pinch_motion - when a pinch gesture is detected, this is the change in
- * distance between the two fingers since this register was last read.
- */
-struct f11_2d_data_10 {
-	s8 pinch_motion;
-} __attribute__((__packed__));
-
-/**
- * @x_flick_dist - when a flick gesture is detected,  the distance of flick
- * gesture in X direction.
- * @y_flick_dist - when a flick gesture is detected,  the distance of flick
- * gesture in Y direction.
- * @flick_time - the total time of the flick gesture, in 10ms units.
- */
-struct f11_2d_data_10_12 {
-	s8 x_flick_dist;
-	s8 y_flick_dist;
-	u8 flick_time;
-} __attribute__((__packed__));
-
-/**
- * @motion - when a rotate gesture is detected, the accumulated distance
- * of the rotate motion. Clockwise motion is positive and counterclockwise
- * motion is negative.
- * @finger_separation - when a rotate gesture is detected, the distance
- * between the fingers.
- */
-struct f11_2d_data_11_12 {
-	s8 motion;
-	u8 finger_separation;
-} __attribute__((__packed__));
-
-/**
- * @horizontal - chiral scrolling distance in the X direction.
- * @vertical - chiral scrolling distance in the Y direction.
- */
-struct f11_2d_data_14_15 {
-	s8 horizontal;
-	s8 vertical;
-} __attribute__((__packed__));
-
-/**
- * @x_low - scroll zone motion along the lower edge of the sensor.
- * @y_right - scroll zone motion along the right edge of the sensor.
- * @x_upper - scroll zone motion along the upper edge of the sensor.
- * @y_left - scroll zone motion along the left edge of the sensor.
- */
-struct f11_2d_data_14_17 {
-	s8 x_low;
-	s8 y_right;
-	s8 x_upper;
-	s8 y_left;
-} __attribute__((__packed__));
-
 /** Handy pointers into our data buffer.
  *
  * @f_state - start of finger state registers.
  * @abs_pos - start of absolute position registers (if present).
  * @rel_pos - start of relative data registers (if present).
+ * @gest_1  - gesture flags (if present).
+ * @gest_2  - gesture flags & finger count (if present).
+ * @pinch   - pinch motion register (if present).
+ * @flick   - flick distance X & Y, flick time (if present).
+ * @rotate  - rotate motion and finger separation.
  * @shapes  - start of touch shapes bit mask (if present).
+ * @multi_scroll - chiral deltas for X and Y (if present).
+ * @scroll_zones - scroll deltas for 4 regions (if present).
  */
 struct f11_2d_data {
 	u8	*f_state;
@@ -743,12 +695,12 @@ struct f11_2d_data {
 	s8	*rel_pos;
 	u8	*gest_1;
 	u8	*gest_2;
-	const struct f11_2d_data_10	*pinch;
-	const struct f11_2d_data_10_12	*flick;
-	const struct f11_2d_data_11_12	*rotate;
+	s8	*pinch;
+	u8	*flick;
+	u8	*rotate;
 	u8	*shapes;
-	const struct f11_2d_data_14_15	*multi_scroll;
-	const struct f11_2d_data_14_17	*scroll_zones;
+	s8	*multi_scroll;
+	s8	*scroll_zones;
 };
 
 /**
