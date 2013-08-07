@@ -2111,7 +2111,7 @@ static ssize_t rmi_fn_54_data_read(struct file *data_file, struct kobject *kobj,
 	instance_data = fn->data;
 	mutex_lock(&instance_data->data_mutex);
 	if (count < instance_data->report_size) {
-		dev_err(dev,  "F54 report size too large for buffer: %d. Need at least: %d for Report type: %d.\n",
+		dev_err(dev,  "F54 report size too large for buffer: %zu. Need at least: %d for Report type: %d.\n",
 				count, instance_data->report_size,
 			instance_data->report_type);
 		mutex_unlock(&instance_data->data_mutex);
