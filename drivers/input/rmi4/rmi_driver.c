@@ -336,7 +336,7 @@ static int rmi_driver_set_input_params(struct rmi_device *rmi_dev,
 	struct rmi_device_platform_data *pdata = to_rmi_platform_data(rmi_dev);
 
 	if (pdata->f11_sensor_data &&
-		pdata->f11_sensor_data[0].sensor_type == rmi_f11_sensor_touchpad)
+		pdata->f11_sensor_data[0].sensor_type == rmi_sensor_touchpad)
 		input->name = SYNAPTICS_TOUCHPAD_INPUT_DEVICE_NAME;
 	else
 		input->name = SYNAPTICS_TOUCHSCREEN_INPUT_DEVICE_NAME;

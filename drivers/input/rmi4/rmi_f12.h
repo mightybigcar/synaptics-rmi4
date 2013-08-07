@@ -148,12 +148,15 @@ struct f12_data {
         u16 y_max;
 
         struct f12_ctl_sensor_tuning sensor_tuning;
+	enum rmi_sensor_type sensor_type;
 
         struct input_dev *input;
         char input_phys[NAME_BUFFER_SIZE];
 
 	u8 suppress;
 	u8 suppress_highw;
+	u8 x_mm;
+	u8 y_mm;
 };
 
 #endif

@@ -72,7 +72,7 @@ static int get_tool_type(struct f11_2d_sensor *sensor, u8 finger_state)
 static void rmi_f11_rel_pos_report(struct f11_2d_sensor *sensor, u8 n_finger)
 {
 	struct f11_2d_data *data = &sensor->data;
-	struct rmi_f11_2d_axis_alignment *axis_align = &sensor->axis_align;
+	struct rmi_2d_axis_alignment *axis_align = &sensor->axis_align;
 	struct rmi_device_platform_data *pdata = to_rmi_platform_data(sensor->fn->rmi_dev);
 	s8 x, y;
 	s8 temp;
@@ -109,7 +109,7 @@ static int rmi_f11_abs_pos_report(struct f11_2d_sensor *sensor,
 				   u8 finger_state, u8 n_finger)
 {
 	struct f11_2d_data *data = &sensor->data;
-	struct rmi_f11_2d_axis_alignment *axis_align = &sensor->axis_align;
+	struct rmi_2d_axis_alignment *axis_align = &sensor->axis_align;
 	struct f11_abs_pos_data *abs;
 	int temp;
 	int send_report = 1;
@@ -221,7 +221,7 @@ static void rmi_f11_send_abs_pos_report(struct f11_2d_sensor *sensor,
 	if (sensor->type_a)
 		input_mt_sync(sensor->input);
 
-	if (sensor->sensor_type == rmi_f11_sensor_touchpad)
+	if (sensor->sensor_type == rmi_sensor_touchpad)
 		input_mt_report_pointer_emulation(sensor->input, true);
 }
 
@@ -295,7 +295,7 @@ static void rmi_f11_finger_handler(struct f11_data *f11,
 
 		}
 
-		if (sensor->sensor_type != rmi_f11_sensor_touchpad && sensor->data.rel_pos)
+		if (sensor->sensor_type != rmi_sensor_touchpad && sensor->data.rel_pos)
 			rmi_f11_rel_pos_report(sensor, i);
 	}
 	
@@ -861,12 +861,12 @@ static void f11_set_abs_params(struct rmi_function *fn, int index)
 		f11->dev_controls.ctrl0_9->sensor_max_y_pos;
 	int x_min, x_max, y_min, y_max;
 	unsigned int input_flags;
-	//int res_x, res_y;
+	int res_x, res_y;
 
 	/* We assume touchscreen unless demonstrably a touchpad or specified
 	 * as a touchpad in the platform data
 	 */
-	if (sensor->sensor_type == rmi_f11_sensor_touchpad ||
+	if (sensor->sensor_type == rmi_sensor_touchpad ||
 			(sensor->sens_query.features_2.has_info2 &&
 				!sensor->sens_query.info_2.is_clear))
 		input_flags = INPUT_PROP_POINTER;
@@ -903,11 +903,11 @@ static void f11_set_abs_params(struct rmi_function *fn, int index)
 	input_set_abs_params(input, ABS_Y, y_min, y_max, 0, 0);
 	input_set_abs_params(input, ABS_PRESSURE, 0, DEFAULT_MAX_ABS_MT_PRESSURE, 0, 0);
 
-	//res_x = (x_max - x_min) / 102;
-	//res_y = (y_max - y_min) / 68;
+	res_x = (x_max - x_min) / sensor->x_mm;
+	res_y = (y_max - y_min) / sensor->y_mm;
 
-	//input_abs_set_res(input, ABS_X, res_x);
-	//input_abs_set_res(input, ABS_Y, res_y);
+	input_abs_set_res(input, ABS_X, res_x);
+	input_abs_set_res(input, ABS_Y, res_y);
 
 	input_set_abs_params(input, ABS_MT_PRESSURE, 0,
 			DEFAULT_MAX_ABS_MT_PRESSURE, 0, 0);
@@ -925,8 +925,8 @@ static void f11_set_abs_params(struct rmi_function *fn, int index)
 			x_min, x_max, 0, 0);
 	input_set_abs_params(input, ABS_MT_POSITION_Y,
 			y_min, y_max, 0, 0);
-	//input_abs_set_res(input, ABS_MT_POSITION_X, res_x);
-	//input_abs_set_res(input, ABS_MT_POSITION_Y, res_y);
+	input_abs_set_res(input, ABS_MT_POSITION_X, res_x);
+	input_abs_set_res(input, ABS_MT_POSITION_Y, res_y);
 	if (!sensor->type_a)
 		input_mt_init_slots(input, sensor->nbr_fingers, 0);
 	if (IS_ENABLED(CONFIG_RMI4_F11_PEN) &&
@@ -1005,6 +1005,8 @@ static int rmi_f11_initialize(struct rmi_function *fn)
 					pdata->f11_sensor_data[i].sensor_type;
 			sensor->suppress_highw =
 					pdata->f11_sensor_data[i].suppress_highw;
+			sensor->x_mm = pdata->f11_sensor_data[i].x_mm;
+			sensor->y_mm = pdata->f11_sensor_data[i].y_mm;
 		}
 
 		rc = rmi_read_block(rmi_dev,
@@ -1148,7 +1150,7 @@ static int rmi_f11_register_devices(struct rmi_function *fn)
 
 		f11_set_abs_params(fn, i);
 
-		if (sensor->sensor_type != rmi_f11_sensor_touchpad
+		if (sensor->sensor_type != rmi_sensor_touchpad
 			&& sensor->sens_query.info.has_rel)
 		{
 			set_bit(EV_REL, input_dev->evbit);
@@ -1210,7 +1212,7 @@ static int rmi_f11_register_devices(struct rmi_function *fn)
 			set_bit(BTN_RIGHT, input_dev_mouse->keybit);
 		}
 
-		if (sensor->sensor_type == rmi_f11_sensor_touchpad) {
+		if (sensor->sensor_type == rmi_sensor_touchpad) {
 			set_bit(EV_KEY, input_dev->evbit);
 			set_bit(BTN_LEFT, input_dev->keybit);
 

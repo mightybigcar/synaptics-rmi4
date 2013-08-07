@@ -32,7 +32,7 @@ enum rmi_attn_polarity {
 };
 
 /**
- * struct rmi_f11_axis_alignment - target axis alignment
+ * struct rmi_axis_alignment - target axis alignment
  * @swap_axes: set to TRUE if desired to swap x- and y-axis
  * @flip_x: set to TRUE if desired to flip direction on x-axis
  * @flip_y: set to TRUE if desired to flip direction on y-axis
@@ -49,7 +49,7 @@ enum rmi_attn_polarity {
  * @rel_report_enabled - if set to true, the relative reporting will be
  *               automatically enabled for this sensor.
  */
-struct rmi_f11_2d_axis_alignment {
+struct rmi_2d_axis_alignment {
 	u32 swap_axes;
 	bool flip_x;
 	bool flip_y;
@@ -99,17 +99,17 @@ struct rmi_f11_virtualbutton_map {
 /** This is used to override any hints an F11 2D sensor might have provided
  * as to what type of sensor it is.
  *
- * @rmi_f11_sensor_default - do not override, determine from F11_2D_QUERY14 if
+ * @rmi_sensor_default - do not override, determine from F11_2D_QUERY14 if
  * available.
- * @rmi_f11_sensor_touchscreen - treat the sensor as a touchscreen (direct
+ * @rmi_sensor_touchscreen - treat the sensor as a touchscreen (direct
  * pointing).
- * @rmi_f11_sensor_touchpad - thread the sensor as a touchpad (indirect
+ * @rmi_sensor_touchpad - thread the sensor as a touchpad (indirect
  * pointing).
  */
-enum rmi_f11_sensor_type {
-	rmi_f11_sensor_default = 0,
-	rmi_f11_sensor_touchscreen,
-	rmi_f11_sensor_touchpad
+enum rmi_sensor_type {
+	rmi_sensor_default = 0,
+	rmi_sensor_touchscreen,
+	rmi_sensor_touchpad
 };
 
 /**
@@ -126,11 +126,21 @@ enum rmi_f11_sensor_type {
  * available.
  */
 struct rmi_f11_sensor_data {
-	struct rmi_f11_2d_axis_alignment axis_align;
+	struct rmi_2d_axis_alignment axis_align;
 	struct rmi_f11_virtualbutton_map virtual_buttons;
 	bool type_a;
-	enum rmi_f11_sensor_type sensor_type;
+	enum rmi_sensor_type sensor_type;
 	u8 suppress_highw;
+	int x_mm;
+	int y_mm;
+};
+
+struct rmi_f12_sensor_data {
+	struct rmi_2d_axis_alignment axis_align;
+	enum rmi_sensor_type sensor_type;
+	u8 suppress_highw;
+	int x_mm;
+	int y_mm;
 };
 
 /**
@@ -306,6 +316,7 @@ struct rmi_device_platform_data {
 
 	/* function handler pdata */
 	struct rmi_f11_sensor_data *f11_sensor_data;
+	struct rmi_f12_sensor_data *f12_sensor_data;
 	u8 f11_sensor_count;
 	u16 f11_rezero_wait;
 	struct rmi_f01_power_management power_management;

@@ -95,20 +95,32 @@ struct rmi_hid_report {
 	} __attribute__((__packed__));
 } __attribute__((__packed__));
 
-static u16 tm2735_button_codes[] = {BTN_LEFT, BTN_RIGHT, BTN_MIDDLE};
+static u16 tp_button_codes[] = {BTN_LEFT, BTN_RIGHT, BTN_MIDDLE};
 
-static struct rmi_f30_gpioled_map tm2735_gpioled_map = {
-	.ngpioleds = ARRAY_SIZE(tm2735_button_codes),
-	.map = tm2735_button_codes,
+static struct rmi_f30_gpioled_map tp_gpioled_map = {
+	.ngpioleds = ARRAY_SIZE(tp_button_codes),
+	.map = tp_button_codes,
 };
 
-static struct rmi_f11_sensor_data tm2735_sensor_data[] = { {
+static struct rmi_f11_sensor_data tp_f11_sensor_data[] = { {
 	.axis_align = {
 		.flip_y = 1,
 	},
-	.sensor_type = rmi_f11_sensor_touchpad,
+	.sensor_type = rmi_sensor_touchpad,
 	.suppress_highw = 0,
+	.x_mm = 102,
+	.y_mm = 68,
 } };
+
+static struct rmi_f12_sensor_data tp_f12_sensor_data = {
+	.axis_align = {
+		.flip_y = 1,
+	},
+	.sensor_type = rmi_sensor_touchpad,
+	.suppress_highw = 0,
+	.x_mm = 102,
+	.y_mm = 68,
+};
 
 static int rmi_hid_set_mode(struct hid_device *hdev, u8 mode);
 
@@ -118,11 +130,12 @@ int rmi_hid_post_resume(const void *pm_data)
 	return rmi_hid_set_mode(hdev, RMI_HID_MODE_ATTN_REPORTS);
 }
 
-static struct rmi_device_platform_data tm2735_platformdata = {
-	.sensor_name = "TM2735",
-	.gpioled_map = &tm2735_gpioled_map,
-	.f11_sensor_data = tm2735_sensor_data,
-	.f11_sensor_count = ARRAY_SIZE(tm2735_sensor_data),
+static struct rmi_device_platform_data tp_platformdata = {
+	.sensor_name = "TouchPad",
+	.gpioled_map = &tp_gpioled_map,
+	.f11_sensor_data = tp_f11_sensor_data,
+	.f11_sensor_count = ARRAY_SIZE(tp_f11_sensor_data),
+	.f12_sensor_data = &tp_f12_sensor_data,
 	.post_resume = rmi_hid_post_resume,
 	.unified_input_device = 1,
 };
@@ -154,7 +167,6 @@ struct rmi_hid_data {
 	u8 writeReport[RMI_HID_OUTPUT_REPORT_LEN];
 	u8 readReport[RMI_HID_INPUT_REPORT_LEN];
 
-	//struct mutex input_queue_mutex;
 	spinlock_t input_queue_producer_lock;
 	spinlock_t input_queue_consumer_lock;
 	struct rmi_hid_report * input_queue;
@@ -703,11 +715,11 @@ static int rmi_hid_probe(struct hid_device *hdev, const struct hid_device_id *id
 		goto hid_stop;
 	}
 
-	tm2735_platformdata.pm_data = hdev;
-	xport->dev->platform_data = &tm2735_platformdata;
+	tp_platformdata.pm_data = hdev;
+	xport->dev->platform_data = &tp_platformdata;
 
 #ifdef TOUCHPAD_WAKE_SYSTEM
-	if (tm2735_platformdata.f11_sensor_data[0].sensor_type == rmi_f11_sensor_touchpad) {
+	if (tp_platformdata.f11_sensor_data[0].sensor_type == rmi_sensor_touchpad) {
 		device_init_wakeup(hdev->dev.parent, 1);
 	}
 #endif

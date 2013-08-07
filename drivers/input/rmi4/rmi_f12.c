@@ -327,7 +327,7 @@ static void report_one_object(struct f12_data *f12, struct rmi_f12_object_data *
                        object->wx, object->wy);
 #endif
 
-               if (1 /*sensor->sensor_type == rmi_f11_sensor_touchpad*/)
+               if (f12->sensor_type == rmi_sensor_touchpad)
                        input_mt_report_pointer_emulation(f12->input, true);
        }
 }
@@ -411,6 +411,7 @@ static int rmi_f12_probe(struct rmi_function *fn)
 	struct rmi_driver_data *driver_data = dev_get_drvdata(&rmi_dev->dev);
 	struct rmi_device_platform_data *pdata = to_rmi_platform_data(rmi_dev);
 	unsigned long input_flags;
+	int res_x, res_y;
 
 	f12 = devm_kzalloc(&fn->dev, sizeof(struct f12_data), GFP_KERNEL);
 	if (!f12)
@@ -453,6 +454,8 @@ static int rmi_f12_probe(struct rmi_function *fn)
 
 	read_sensor_tuning(fn);
 
+	f12->sensor_type = pdata->f12_sensor_data->sensor_type;
+
 	if (pdata->unified_input_device) {
 		input_dev = driver_data->input;
 	} else {
@@ -478,7 +481,7 @@ static int rmi_f12_probe(struct rmi_function *fn)
 	set_bit(EV_ABS, input_dev->evbit);
 	input_set_capability(input_dev, EV_KEY, BTN_TOUCH);
 
-	if (1 /*sensor->sensor_type == rmi_f11_sensor_touchpad*/)
+	if (f12->sensor_type == rmi_sensor_touchpad)
 		input_flags = INPUT_PROP_POINTER;
 	else
 		input_flags = INPUT_PROP_DIRECT;
@@ -488,6 +491,12 @@ static int rmi_f12_probe(struct rmi_function *fn)
 	input_set_abs_params(input_dev, ABS_X, 0, f12->x_max, 0, 0);
 	input_set_abs_params(input_dev, ABS_Y, 0, f12->y_max, 0, 0);
 	input_set_abs_params(input_dev, ABS_PRESSURE, 0, DEFAULT_MAX_ABS_MT_PRESSURE, 0, 0);
+
+	res_x = (f12->x_max - 0) / pdata->f12_sensor_data->x_mm;
+	res_y = (f12->y_max - 0) / pdata->f12_sensor_data->y_mm;
+
+	input_abs_set_res(input_dev, ABS_X, res_x);
+	input_abs_set_res(input_dev, ABS_Y, res_y);
 
 	input_set_abs_params(input_dev, ABS_MT_POSITION_X,
 			0, f12->x_max, 0, 0);
@@ -504,12 +513,14 @@ static int rmi_f12_probe(struct rmi_function *fn)
 	input_set_abs_params(input_dev, ABS_MT_TRACKING_ID,
 			DEFAULT_MIN_ABS_MT_TRACKING_ID,
 			f12->max_objects, 0, 0);
+	input_abs_set_res(input_dev, ABS_MT_POSITION_X, res_x);
+	input_abs_set_res(input_dev, ABS_MT_POSITION_Y, res_y);
 	//input_set_abs_params(input_dev, ABS_MT_TOOL_TYPE,
 	//			0, MT_TOOL_MAX, 0, 0);
 	input_set_abs_params(input_dev, ABS_MT_TOOL_TYPE,
 				0, MT_TOOL_FINGER, 0, 0);
 
-	if (1 /*sensor->sensor_type == rmi_f11_sensor_touchpad*/) {
+	if (f12->sensor_type == rmi_sensor_touchpad) {
 		set_bit(EV_KEY, input_dev->evbit);
 		set_bit(BTN_LEFT, input_dev->keybit);
 
