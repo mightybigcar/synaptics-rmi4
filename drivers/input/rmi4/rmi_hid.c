@@ -21,6 +21,7 @@
 #include <linux/uaccess.h>
 #include <linux/wait.h>
 #include <linux/sched.h>
+#include <linux/circ_buf.h>
 #include "rmi_driver.h"
 
 #define to_hid_device(d) container_of(d, struct hid_device, dev)
@@ -153,10 +154,12 @@ struct rmi_hid_data {
 	u8 readReport[RMI_HID_INPUT_REPORT_LEN];
 
 	//struct mutex input_queue_mutex;
-	spinlock_t input_queue_lock;
+	spinlock_t input_queue_producer_lock;
+	spinlock_t input_queue_consumer_lock;
 	struct rmi_hid_report * input_queue;
 	int input_queue_head;
 	int input_queue_tail;
+	
 	struct work_struct attn_report_work;
 
 	unsigned long flags;
@@ -550,17 +553,23 @@ static void rmi_hid_attn_report_work(struct work_struct *work)
 	struct rmi_hid_report * queue_report;
 	struct rmi_driver_data * drv_data;
 	unsigned long lock_flags;
+	int head;
+	int tail;
 
-	spin_lock_irqsave(&hdata->input_queue_lock, lock_flags);
-	while (hdata->input_queue_head != hdata->input_queue_tail) {
+	spin_lock_irqsave(&hdata->input_queue_consumer_lock, lock_flags);
+
+	head = ACCESS_ONCE(hdata->input_queue_head);
+	tail = hdata->input_queue_tail;
+
+	while (CIRC_CNT(head, tail, RMI_HID_INPUT_REPORT_QUEUE_LEN)) {
 		memset(rmi_report, 0, RMI_HID_INPUT_REPORT_LEN);
 
 		queue_report = (struct rmi_hid_report *)(((u8*)hdata->input_queue)
-				+ RMI_HID_INPUT_REPORT_LEN * hdata->input_queue_head);
+				+ RMI_HID_INPUT_REPORT_LEN * tail);
 		memcpy(rmi_report, queue_report, RMI_HID_INPUT_REPORT_LEN);
-		hdata->input_queue_head = (hdata->input_queue_head + 1)
-					% RMI_HID_INPUT_REPORT_QUEUE_LEN;
-		spin_unlock_irqrestore(&hdata->input_queue_lock, lock_flags);
+
+		smp_mb();
+		hdata->input_queue_tail = (tail + 1) & (RMI_HID_INPUT_REPORT_QUEUE_LEN - 1);
 
 		dev_dbg(&xport->rmi_dev->dev, "attn = %*ph\n", RMI_HID_INPUT_REPORT_LEN,
 			rmi_report);
@@ -575,9 +584,11 @@ static void rmi_hid_attn_report_work(struct work_struct *work)
 						1 /* interrupt sources */;
 			xport->rmi_dev->driver->process(xport->rmi_dev);
 		}
-		spin_lock_irqsave(&hdata->input_queue_lock, lock_flags);
+
+		head = ACCESS_ONCE(hdata->input_queue_head);
+		tail = hdata->input_queue_tail;
 	}
-	spin_unlock_irqrestore(&hdata->input_queue_lock, lock_flags);
+	spin_unlock_irqrestore(&hdata->input_queue_consumer_lock, lock_flags);
 }
 
 static int rmi_hid_raw_event(struct hid_device *hdev,
@@ -589,6 +600,8 @@ static int rmi_hid_raw_event(struct hid_device *hdev,
 	struct rmi_hid_report * rmi_report = (struct rmi_hid_report *)data;
 	int sched_work = 0;
 	unsigned long lock_flags;
+	int head;
+	int tail;
 
 	if (rmi_report->hidReportID == RMI_READ_DATA_REPORT_ID) {
 		if (test_bit(RMI_HID_READ_REQUEST_PENDING, &hdata->flags)) {
@@ -603,17 +616,24 @@ static int rmi_hid_raw_event(struct hid_device *hdev,
 	} else if (rmi_report->hidReportID == RMI_ATTN_REPORT_ID
 			&& test_bit(RMI_HID_STARTED, &hdata->flags))
 	{
-		spin_lock_irqsave(&hdata->input_queue_lock, lock_flags);
-		if (hdata->input_queue_head == hdata->input_queue_tail)
+		spin_lock_irqsave(&hdata->input_queue_producer_lock, lock_flags);
+		
+		head = hdata->input_queue_head;
+		tail = ACCESS_ONCE(hdata->input_queue_tail);
+
+
+		if (!CIRC_CNT(head, tail, RMI_HID_INPUT_REPORT_QUEUE_LEN))
 			sched_work = 1;
 
 		queue_report = (struct rmi_hid_report *)(((u8*)hdata->input_queue)
-				+ RMI_HID_INPUT_REPORT_LEN * hdata->input_queue_tail);
+				+ RMI_HID_INPUT_REPORT_LEN * head);
 		memcpy(queue_report, data, size < RMI_HID_INPUT_REPORT_LEN ? size
 			: RMI_HID_INPUT_REPORT_LEN);
-		hdata->input_queue_tail = (hdata->input_queue_tail + 1)
-			% RMI_HID_INPUT_REPORT_QUEUE_LEN;
-		spin_unlock_irqrestore(&hdata->input_queue_lock, lock_flags);
+
+		smp_wmb();
+		hdata->input_queue_head = (head + 1) & (RMI_HID_INPUT_REPORT_QUEUE_LEN - 1);
+
+		spin_unlock_irqrestore(&hdata->input_queue_producer_lock, lock_flags);
 
 		if (sched_work)
 			schedule_work(&hdata->attn_report_work);
@@ -691,7 +711,8 @@ static int rmi_hid_probe(struct hid_device *hdev, const struct hid_device_id *id
 	}
 #endif
 
-	spin_lock_init(&data->input_queue_lock);
+	spin_lock_init(&data->input_queue_consumer_lock);
+	spin_lock_init(&data->input_queue_producer_lock);
 	data->input_queue_head = 0;
 	data->input_queue_tail = 0;
 	INIT_WORK(&data->attn_report_work, rmi_hid_attn_report_work);
