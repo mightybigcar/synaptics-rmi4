@@ -654,67 +654,26 @@ struct f11_2d_ctrl {
 	struct f11_2d_ctrl29_30		*ctrl29_30;
 };
 
-/**
- * @x_msb - top 8 bits of X finger position.
- * @y_msb - top 8 bits of Y finger position.
- * @x_lsb - bottom 4 bits of X finger position.
- * @y_lsb - bottom 4 bits of Y finger position.
- * @w_y - contact patch width along Y axis.
- * @w_x - contact patch width along X axis.
- * @z - finger Z value (proxy for pressure).
- */
-struct f11_2d_data_1_5 {
-	u8 x_msb;
-	u8 y_msb;
-	u8 x_lsb:4;
-	u8 y_lsb:4;
-	u8 w_y:4;
-	u8 w_x:4;
-	u8 z;
-} __attribute__((__packed__));
+#define RMI_F11_ABS_BYTES 5
+#define RMI_F11_REL_BYTES 2
 
-/**
- * @delta_x - relative motion along X axis.
- * @delta_y - relative motion along Y axis.
- */
-struct f11_2d_data_6_7 {
-	s8 delta_x;
-	s8 delta_y;
-} __attribute__((__packed__));
+/* Defs for Data 8 */
 
-/**
- * @single_tap - a single tap was recognized.
- * @tap_and_hold - a tap-and-hold gesture was recognized.
- * @double_tap - a double tap gesture was recognized.
- * @early_tap - a tap gesture might be happening.
- * @flick - a flick gesture was detected.
- * @press - a press gesture was recognized.
- * @pinch - a pinch gesture was detected.
- */
-struct f11_2d_data_8 {
-	u8 single_tap:1;
-	u8 tap_and_hold:1;
-	u8 double_tap:1;
-	u8 early_tap:1;
-	u8 flick:1;
-	u8 press:1;
-	u8 pinch:1;
-} __attribute__((__packed__));
+#define RMI_F11_SINGLE_TAP		(1 << 0)
+#define RMI_F11_TAP_AND_HOLD		(1 << 1)
+#define RMI_F11_DOUBLE_TAP		(1 << 2)
+#define RMI_F11_EARLY_TAP		(1 << 3)
+#define RMI_F11_FLICK			(1 << 4)
+#define RMI_F11_PRESS			(1 << 5)
+#define RMI_F11_PINCH			(1 << 6)
 
-/**
- * @palm_detect - a palm or other large object is in contact with the sensor.
- * @rotate - a rotate gesture was detected.
- * @shape - a TouchShape has been activated.
- * @scrollzone - scrolling data is available.
- * @finger_count - number of fingers involved in the reported gesture.
- */
-struct f11_2d_data_9 {
-	u8 palm_detect:1;
-	u8 rotate:1;
-	u8 shape:1;
-	u8 scrollzone:1;
-	u8 finger_count:3;
-} __attribute__((__packed__));
+/* Defs for Data 9 */
+
+#define RMI_F11_PALM_DETECT			(1 << 0)
+#define RMI_F11_ROTATE				(1 << 1)
+#define RMI_F11_SHAPE				(1 << 2)
+#define RMI_F11_SCROLLZONE			(1 << 3)
+#define RMI_F11_GESTURE_FINGER_COUNT_MASK	0x70
 
 /**
  * @pinch_motion - when a pinch gesture is detected, this is the change in
@@ -750,13 +709,6 @@ struct f11_2d_data_11_12 {
 } __attribute__((__packed__));
 
 /**
- * @shape_n - a bitmask of the currently activate TouchShapes (if any).
- */
-struct f11_2d_data_13 {
-	u8 shape_n;
-} __attribute__((__packed__));
-
-/**
  * @horizontal - chiral scrolling distance in the X direction.
  * @vertical - chiral scrolling distance in the Y direction.
  */
@@ -778,16 +730,23 @@ struct f11_2d_data_14_17 {
 	s8 y_left;
 } __attribute__((__packed__));
 
+/** Handy pointers into our data buffer.
+ *
+ * @f_state - start of finger state registers.
+ * @abs_pos - start of absolute position registers (if present).
+ * @rel_pos - start of relative data registers (if present).
+ * @shapes  - start of touch shapes bit mask (if present).
+ */
 struct f11_2d_data {
-	u8				*f_state;
-	const struct f11_2d_data_1_5	*abs_pos;
-	const struct f11_2d_data_6_7	*rel_pos;
-	const struct f11_2d_data_8	*gest_1;
-	const struct f11_2d_data_9	*gest_2;
+	u8	*f_state;
+	u8	*abs_pos;
+	s8	*rel_pos;
+	u8	*gest_1;
+	u8	*gest_2;
 	const struct f11_2d_data_10	*pinch;
 	const struct f11_2d_data_10_12	*flick;
 	const struct f11_2d_data_11_12	*rotate;
-	const struct f11_2d_data_13	*shapes;
+	u8	*shapes;
 	const struct f11_2d_data_14_15	*multi_scroll;
 	const struct f11_2d_data_14_17	*scroll_zones;
 };

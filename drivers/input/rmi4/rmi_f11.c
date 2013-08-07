@@ -68,8 +68,8 @@ static void rmi_f11_rel_pos_report(struct f11_2d_sensor *sensor, u8 n_finger)
 	s8 x, y;
 	s8 temp;
 
-	x = data->rel_pos[n_finger].delta_x;
-	y = data->rel_pos[n_finger].delta_y;
+	x = data->rel_pos[n_finger * 2];
+	y = data->rel_pos[n_finger * 2 + 1];
 
 	x = min(F11_REL_POS_MAX, max(F11_REL_POS_MIN, (int)x));
 	y = min(F11_REL_POS_MAX, max(F11_REL_POS_MIN, (int)y));
@@ -102,19 +102,20 @@ static void rmi_f11_abs_pos_report(struct f11_data *f11,
 	int x, y, z;
 	int w_x, w_y, w_max, w_min, orient;
 	int temp;
+	u8 abs_base = n_finger * RMI_F11_ABS_BYTES;
 
 	x = y = z = w_x = w_y = w_min = w_max = orient = 0;
 
 	if (finger_state) {
-		x = ((data->abs_pos[n_finger].x_msb << 4) |
-			data->abs_pos[n_finger].x_lsb);
-		y = ((data->abs_pos[n_finger].y_msb << 4) |
-			data->abs_pos[n_finger].y_lsb);
-		z = data->abs_pos[n_finger].z;
-		w_x = data->abs_pos[n_finger].w_x;
-		w_y = data->abs_pos[n_finger].w_y;
+		x = (data->abs_pos[abs_base] << 4) |
+			(data->abs_pos[abs_base + 2] & 0x0F);
+		y = (data->abs_pos[abs_base + 1] << 4) |
+			(data->abs_pos[abs_base + 2] >> 4);
+		w_x = data->abs_pos[abs_base + 3] & 0x0F;
+		w_y = data->abs_pos[abs_base + 3] >> 4;
 		w_max = max(w_x, w_y);
 		w_min = min(w_x, w_y);
+		z = data->abs_pos[abs_base + 4];
 
 		if (axis_align->swap_axes) {
 			temp = x;
@@ -178,9 +179,9 @@ static void rmi_f11_abs_pos_report(struct f11_data *f11,
 		input_report_abs(sensor->input, ABS_MT_ORIENTATION, orient);
 		input_report_abs(sensor->input, ABS_MT_POSITION_X, x);
 		input_report_abs(sensor->input, ABS_MT_POSITION_Y, y);
-/*		dev_dbg(&sensor->fn->dev,
+		dev_dbg(&sensor->fn->dev,
 			"finger[%d]:%d - x:%d y:%d z:%d w_max:%d w_min:%d\n",
-			n_finger, finger_state, x, y, z, w_max, w_min);*/
+			n_finger, finger_state, x, y, z, w_max, w_min);
 	}
 	/* MT sync between fingers */
 	if (sensor->type_a)
@@ -197,12 +198,10 @@ static int rmi_f11_virtual_button_handler(struct f11_2d_sensor *sensor)
 	struct virtualbutton_map virtualbutton;
 
 	if (sensor->sens_query.has_gestures &&
-				sensor->data.gest_1->single_tap) {
+		(sensor->data.gest_1[0] & RMI_F11_SINGLE_TAP)) {
 		virtualbutton_map = &sensor->virtual_buttons;
-		x = ((sensor->data.abs_pos[0].x_msb << 4) |
-			sensor->data.abs_pos[0].x_lsb);
-		y = ((sensor->data.abs_pos[0].y_msb << 4) |
-			sensor->data.abs_pos[0].y_lsb);
+		x = (data->abs_pos[0] << 4) | (data->abs_pos[2] & 0x0F);
+		y = (data->abs_pos[0] << 4) | (data->abs_pos[2] >> 4);
 		for (i = 0; i < virtualbutton_map->buttons; i++) {
 			virtualbutton = virtualbutton_map->map[i];
 			if (x >= virtualbutton.x &&
@@ -224,6 +223,21 @@ static int rmi_f11_virtual_button_handler(struct f11_2d_sensor *sensor)
 #define rmi_f11_virtual_button_handler(sensor)
 #endif
 
+static void rmi_f11_shape_handler(struct f11_2d_sensor *sensor)
+{
+	u8 i;
+
+	if (!(sensor->data.gest_2[0] & RMI_F11_SHAPE))
+		return;
+
+	for (i = 0; i < sensor->sens_query.nr_touch_shapes; i++) {
+		bool pressed = !!(sensor->data.shapes[i / 8] & (1 << (i % 8)));
+		if (pressed)
+			dev_dbg(&sensor->fn->dev, "Shape %d pressed.\n", i);
+		// TODO: report this
+	}
+}
+
 static void rmi_f11_finger_handler(struct f11_data *f11,
 				   struct f11_2d_sensor *sensor)
 {
@@ -233,7 +247,7 @@ static void rmi_f11_finger_handler(struct f11_data *f11,
 	u8 i;
 
 	for (i = 0, finger_pressed_count = 0; i < sensor->nbr_fingers; i++) {
-		/* Possible of having 4 fingers per f_statet register */
+		/* Possible of having 4 fingers per f_state register */
 		finger_state = (f_state[i / 4] >> (2 * (i % 4))) &
 					FINGER_STATE_MASK;
 		if (finger_state == F11_PRODUCT_SPECIFIC) {
@@ -249,7 +263,12 @@ static void rmi_f11_finger_handler(struct f11_data *f11,
 		if (sensor->data.rel_pos)
 			rmi_f11_rel_pos_report(sensor, i);
 	}
+
 	input_report_key(sensor->input, BTN_TOUCH, finger_pressed_count);
+
+	if (sensor->data.shapes)
+		rmi_f11_shape_handler(sensor);
+
 	input_sync(sensor->input);
 }
 
@@ -298,24 +317,22 @@ static int f11_2d_construct_data(struct f11_2d_sensor *sensor)
 	i = DIV_ROUND_UP(sensor->nbr_fingers, 4);
 
 	if (query->has_abs) {
-		data->abs_pos = (struct f11_2d_data_1_5 *)
-				&sensor->data_pkt[i];
-		i += (sensor->nbr_fingers * 5);
+		data->abs_pos = &sensor->data_pkt[i];
+		i += (sensor->nbr_fingers * RMI_F11_ABS_BYTES);
 	}
 
 	if (query->has_rel) {
-		data->rel_pos = (struct f11_2d_data_6_7 *)
-				&sensor->data_pkt[i];
-		i += (sensor->nbr_fingers * 2);
+		data->rel_pos = &sensor->data_pkt[i];
+		i += (sensor->nbr_fingers * RMI_F11_REL_BYTES);
 	}
 
 	if (query->query7_nonzero) {
-		data->gest_1 = (struct f11_2d_data_8 *)&sensor->data_pkt[i];
+		data->gest_1 = &sensor->data_pkt[i];
 		i++;
 	}
 
 	if (query->query7_nonzero || query->query8_nonzero) {
-		data->gest_2 = (struct f11_2d_data_9 *)&sensor->data_pkt[i];
+		data->gest_2 = &sensor->data_pkt[i];
 		i++;
 	}
 
@@ -347,7 +364,7 @@ static int f11_2d_construct_data(struct f11_2d_sensor *sensor)
 	}
 
 	if (query->has_touch_shapes)
-		data->shapes = (struct f11_2d_data_13 *)&sensor->data_pkt[i];
+		data->shapes = &sensor->data_pkt[i];
 
 	return 0;
 }
