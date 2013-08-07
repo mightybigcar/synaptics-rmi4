@@ -169,8 +169,8 @@ static ssize_t delta_threshold_read(struct file *filp, char __user *buffer,
 	data->done = 1;
 
 	retval = snprintf(local_buf, size, "%u %u\n",
-			ctrl->ctrl0_9->delta_x_threshold,
-			ctrl->ctrl0_9->delta_y_threshold);
+			ctrl->ctrl0_9[RMI_F11_DELTA_X_THRESHOLD],
+			ctrl->ctrl0_9[RMI_F11_DELTA_Y_THRESHOLD]);
 
 	if (retval <= 0 || copy_to_user(buffer, local_buf, retval))
 		retval = -EFAULT;
@@ -207,19 +207,18 @@ static ssize_t delta_threshold_write(struct file *filp,
 	if (retval != 2 || new_X > 1 || new_Y > 1)
 		return -EINVAL;
 
-	save_X = ctrl->ctrl0_9->delta_x_threshold;
-	save_Y = ctrl->ctrl0_9->delta_y_threshold;
+	save_X = ctrl->ctrl0_9[RMI_F11_DELTA_X_THRESHOLD];
+	save_Y = ctrl->ctrl0_9[RMI_F11_DELTA_Y_THRESHOLD];
 
-	ctrl->ctrl0_9->delta_x_threshold = new_X;
-	ctrl->ctrl0_9->delta_y_threshold = new_Y;
-	rc = rmi_write_block(rmi_dev, ctrl->ctrl0_9_address,
-			ctrl->ctrl0_9, sizeof(*ctrl->ctrl0_9));
+	ctrl->ctrl0_9[RMI_F11_DELTA_X_THRESHOLD] = new_X;
+	ctrl->ctrl0_9[RMI_F11_DELTA_Y_THRESHOLD] = new_Y;
+	rc = rmi_write_block(rmi_dev, ctrl->ctrl0_9_address, ctrl->ctrl0_9, 10);
 	if (rc < 0) {
 		dev_warn(&data->sensor->fn->dev,
 			"Failed to write to delta_threshold. Code: %d.\n",
 			rc);
-		ctrl->ctrl0_9->delta_x_threshold = save_X;
-		ctrl->ctrl0_9->delta_y_threshold = save_Y;
+		ctrl->ctrl0_9[RMI_F11_DELTA_X_THRESHOLD] = save_X;
+		ctrl->ctrl0_9[RMI_F11_DELTA_Y_THRESHOLD] = save_Y;
 	}
 
 	return size;

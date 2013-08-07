@@ -369,32 +369,14 @@ static int f11_2d_construct_data(struct f11_2d_sensor *sensor)
 static int f11_read_control_regs(struct rmi_function *fn,
 				struct f11_2d_ctrl *ctrl, u16 ctrl_base_addr) {
 	struct rmi_device *rmi_dev = fn->rmi_dev;
-	u16 read_address = ctrl_base_addr;
-	int error = 0;
+	int error;
 
-	ctrl->ctrl0_9_address = read_address;
-	error = rmi_read_block(rmi_dev, read_address, ctrl->ctrl0_9,
-		sizeof(*ctrl->ctrl0_9));
+	ctrl->ctrl0_9_address = ctrl_base_addr;
+	error = rmi_read_block(rmi_dev, ctrl_base_addr, ctrl->ctrl0_9, 10);
 	if (error < 0) {
-		dev_err(&fn->dev, "Failed to read ctrl0, code: %d.\n",
-			error);
+		dev_err(&fn->dev, "Failed to read ctrl0, code: %d.\n", error);
 		return error;
 	}
-	read_address += sizeof(*ctrl->ctrl0_9);
-
-	return 0;
-}
-
-static int f11_allocate_control_regs(struct rmi_function *fn,
-				struct f11_data *f11,
-				struct f11_2d_sensor_queries *sensor_query,
-				struct f11_2d_ctrl *ctrl,
-				u16 ctrl_base_addr) {
-
-	ctrl->ctrl0_9 = devm_kzalloc(&fn->dev,
-				     sizeof(struct f11_2d_ctrl0_9), GFP_KERNEL);
-	if (!ctrl->ctrl0_9)
-		return -ENOMEM;
 
 	return 0;
 }
@@ -405,15 +387,11 @@ static int f11_write_control_regs(struct rmi_function *fn,
 					u16 ctrl_base_addr)
 {
 	struct rmi_device *rmi_dev = fn->rmi_dev;
-	u16 write_address = ctrl_base_addr;
 	int error;
 
-	error = rmi_write_block(rmi_dev, write_address,
-				ctrl->ctrl0_9,
-				 sizeof(*ctrl->ctrl0_9));
+	error = rmi_write_block(rmi_dev, ctrl_base_addr, ctrl->ctrl0_9, 10);
 	if (error < 0)
 		return error;
-	write_address += sizeof(ctrl->ctrl0_9);
 
 	return 0;
 }
@@ -663,10 +641,10 @@ static void f11_set_abs_params(struct rmi_function *fn, int index)
 	struct f11_data *f11 = fn->data;
 	struct f11_2d_sensor *sensor = &f11->sensors[index];
 	struct input_dev *input = sensor->input;
-	int device_x_max =
-		f11->dev_controls.ctrl0_9->sensor_max_x_pos;
-	int device_y_max =
-		f11->dev_controls.ctrl0_9->sensor_max_y_pos;
+	int device_x_max = f11->dev_controls.ctrl0_9[6] |
+			(f11->dev_controls.ctrl0_9[7] << 8);
+	int device_y_max =f11->dev_controls.ctrl0_9[8] |
+			(f11->dev_controls.ctrl0_9[9] << 8);
 	int x_min, x_max, y_min, y_max;
 	unsigned int input_flags;
 
@@ -780,15 +758,6 @@ static int rmi_f11_initialize(struct rmi_function *fn)
 			return rc;
 		query_offset += rc;
 
-		rc = f11_allocate_control_regs(fn, f11,
-				&sensor->sens_query,
-				&f11->dev_controls, control_base_addr);
-		if (rc < 0) {
-			dev_err(&fn->dev,
-				"Failed to allocate F11 control params.\n");
-			return rc;
-		}
-
 		rc = f11_read_control_regs(fn, &f11->dev_controls,
 				control_base_addr);
 		if (rc < 0) {
@@ -833,12 +802,10 @@ static int rmi_f11_initialize(struct rmi_function *fn)
 
 		ctrl = &f11->dev_controls;
 		if (sensor->axis_align.delta_x_threshold) {
-			ctrl->ctrl0_9->delta_x_threshold =
+			ctrl->ctrl0_9[RMI_F11_DELTA_X_THRESHOLD] =
 				sensor->axis_align.delta_x_threshold;
-			rc = rmi_write_block(rmi_dev,
-					ctrl->ctrl0_9_address,
-					ctrl->ctrl0_9,
-					sizeof(*ctrl->ctrl0_9));
+			rc = rmi_write_block(rmi_dev, ctrl->ctrl0_9_address,
+					     ctrl->ctrl0_9, 10);
 			if (rc < 0)
 				dev_warn(&fn->dev, "Failed to write to delta_x_threshold %d. Code: %d.\n",
 					i, rc);
@@ -846,12 +813,10 @@ static int rmi_f11_initialize(struct rmi_function *fn)
 		}
 
 		if (sensor->axis_align.delta_y_threshold) {
-			ctrl->ctrl0_9->delta_y_threshold =
+			ctrl->ctrl0_9[RMI_F11_DELTA_Y_THRESHOLD] =
 				sensor->axis_align.delta_y_threshold;
-			rc = rmi_write_block(rmi_dev,
-					ctrl->ctrl0_9_address,
-					ctrl->ctrl0_9,
-					sizeof(*ctrl->ctrl0_9));
+			rc = rmi_write_block(rmi_dev, ctrl->ctrl0_9_address,
+					ctrl->ctrl0_9, 10);
 			if (rc < 0)
 				dev_warn(&fn->dev, "Failed to write to delta_y_threshold %d. Code: %d.\n",
 					i, rc);

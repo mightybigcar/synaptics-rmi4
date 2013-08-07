@@ -405,67 +405,27 @@ struct f11_2d_sensor_queries {
 	bool has_advanced_gestures;
 };
 
-/**
- * @reporting_mode - controls how often finger position data is reported.
- * @abs_pos_filt - when set, enables various noise and jitter filtering
- * algorithms for absolute reports.
- * @rel_pos_filt - when set, enables various noise and jitter filtering
- * algorithms for relative reports.
- * @rel_ballistics - enables ballistics processing for the relative finger
- * motion on the 2-D sensor.
- * @dribble - enables the dribbling feature.
- * @report_beyond_clip - when this is set, fingers outside the active area
- * specified by the x_clip and y_clip registers will be reported, but with
- * reported finger position clipped to the edge of the active area.
- * @palm_detect_thresh - the threshold at which a wide finger is considered a
- * palm. A value of 0 inhibits palm detection.
- * @motion_sensitivity - specifies the threshold an anchored finger must move
- * before it is considered no longer anchored.  High values mean more
- * sensitivity.
- * @man_track_en - for anchored finger tracking, whether the host (1) or the
- * device (0) determines which finger is the tracked finger.
- * @man_tracked_finger - when man_track_en is 1, specifies whether finger 0 or
- * finger 1 is the tracked finger.
- * @delta_x_threshold - 2-D position update interrupts are inhibited unless
- * the finger moves more than a certain threshold distance along the X axis.
- * @delta_y_threshold - 2-D position update interrupts are inhibited unless
- * the finger moves more than a certain threshold distance along the Y axis.
- * @velocity - When rel_ballistics is set, this register defines the
- * velocity ballistic parameter applied to all relative motion events.
- * @acceleration - When rel_ballistics is set, this register defines the
- * acceleration ballistic parameter applied to all relative motion events.
- * @sensor_max_x_pos - the maximum X coordinate reported by the sensor.
- * @sensor_max_y_pos - the maximum Y coordinate reported by the sensor.
- */
-struct f11_2d_ctrl0_9 {
-	/* F11_2D_Ctrl0 */
-	u8 reporting_mode:3;
-	u8 abs_pos_filt:1;
-	u8 rel_pos_filt:1;
-	u8 rel_ballistics:1;
-	u8 dribble:1;
-	u8 report_beyond_clip:1;
-	/* F11_2D_Ctrl1 */
-	u8 palm_detect_thres:4;
-	u8 motion_sensitivity:2;
-	u8 man_track_en:1;
-	u8 man_tracked_finger:1;
-	/* F11_2D_Ctrl2 and 3 */
-	u8 delta_x_threshold:8;
-	u8 delta_y_threshold:8;
-	/* F11_2D_Ctrl4 and 5 */
-	u8 velocity:8;
-	u8 acceleration:8;
-	/* F11_2D_Ctrl6 thru 9 */
-	u16 sensor_max_x_pos:12;
-	u8 ctrl7_reserved:4;
-	u16 sensor_max_y_pos:12;
-	u8 ctrl9_reserved:4;
-} __attribute__((__packed__));
+/* Defs for Ctrl0. */
+#define RMI_F11_REPORT_MODE_MASK	0x07
+#define RMI_F11_ABS_POS_FILT		(1 << 3)
+#define RMI_F11_REL_POS_FILT		(1 << 4)
+#define RMI_F11_REL_BALLISTICS		(1 << 5)
+#define RMI_F11_DRIBBLE			(1 << 6)
+#define RMI_F11_REPORT_BEYOND_CLIP	(1 << 7)
+
+/* Defs for Ctrl1. */
+#define RMI_F11_PALM_DETECT_THRESH_MASK	0x0F
+#define RMI_F11_MOTION_SENSITIVITY_MASK	0x30
+#define RMI_F11_MANUAL_TRACKING		(1 << 6)
+#define RMI_F11_MANUAL_TRACKED_FINGER	(1 << 7)
+
+#define RMI_F11_DELTA_X_THRESHOLD	2
+#define RMI_F11_DELTA_Y_THRESHOLD	3
+
 
 struct f11_2d_ctrl {
-	struct f11_2d_ctrl0_9		 *ctrl0_9;
-	u16				ctrl0_9_address;
+	u8		ctrl0_9[10];
+	u16		ctrl0_9_address;
 };
 
 #define RMI_F11_ABS_BYTES 5
