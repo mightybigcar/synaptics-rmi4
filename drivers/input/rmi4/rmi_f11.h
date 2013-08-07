@@ -60,33 +60,126 @@
  */
 
 /**
- * @rezero - writing 1 to this will cause the sensor to calibrate to the
- * current capacitive state.
+ * @rezero - writing this to the F11 command register will cause the sensor to
+ * calibrate to the current capacitive state.
  */
-struct f11_2d_commands {
-	u8 rezero:1;
-	u8 reserved:7;
-} __attribute__((__packed__));
+#define RMI_F11_REZERO  0x01
 
-/** This query is always present, and is on a per device basis.  All other
- * queries are on a per-sensor basis.
+/** Nr sensors will be going away in the near future, but for now we still
+ * need to worry about it.
+ */
+#define RMI_F11_NR_SENSORS_MASK		0x07
+#define RMI_F11_HAS_QUERY9		(1 << 3)
+#define RMI_F11_HAS_QUERY11		(1 << 4)
+#define RMI_F11_HAS_QUERY12		(1 << 5)
+#define RMI_F11_HAS_QUERY27		(1 << 6)
+#define RMI_F11_HAS_QUERY28		(1 << 7)
+
+/** Defs for Query 1 */
+
+#define RMI_F11_NR_FINGERS_MASK 0x07
+#define RMI_F11_HAS_REL			(1 << 3)
+#define RMI_F11_HAS_ABS			(1 << 4)
+#define RMI_F11_HAS_GESTURES		(1 << 5)
+#define RMI_F11_HAS_SENSITIVITY_ADJ	(1 << 6)
+#define RMI_F11_CONFIGURABLE		(1 << 7)
+
+/** Defs for Query 2, 3, and 4. */
+#define RMI_F11_NR_ELECTRODES_MASK	0x7F
+
+/** Defs for Query 5 */
+
+#define RMI_F11_ABS_DATA_SIZE_MASK	0x03
+#define RMI_F11_HAS_ANCHORED_FINGER	(1 << 2)
+#define RMI_F11_HAS_ADJ_HYST		(1 << 3)
+#define RMI_F11_HAS_DRIBBLE		(1 << 4)
+#define RMI_F11_HAS_BENDING_CORRECTION	(1 << 5)
+#define RMI_F11_HAS_LARGE_OBJECT_SUPPRESSION	(1 << 6)
+#define RMI_F11_HAS_JITTER_FILTER	(1 << 7)
+
+/** Defs for Query 7 */
+#define RMI_F11_HAS_SINGLE_TAP			(1 << 0)
+#define RMI_F11_HAS_TAP_AND_HOLD		(1 << 1)
+#define RMI_F11_HAS_DOUBLE_TAP			(1 << 2)
+#define RMI_F11_HAS_EARLY_TAP			(1 << 3)
+#define RMI_F11_HAS_FLICK			(1 << 4)
+#define RMI_F11_HAS_PRESS			(1 << 5)
+#define RMI_F11_HAS_PINCH			(1 << 6)
+#define RMI_F11_HAS_CHIRAL			(1 << 7)
+
+/** Defs for Query 8 */
+#define RMI_F11_HAS_PALM_DET			(1 << 0)
+#define RMI_F11_HAS_ROTATE			(1 << 1)
+#define RMI_F11_HAS_TOUCH_SHAPES		(1 << 2)
+#define RMI_F11_HAS_SCROLL_ZONES		(1 << 3)
+#define RMI_F11_HAS_INDIVIDUAL_SCROLL_ZONES	(1 << 4)
+#define RMI_F11_HAS_MF_SCROLL			(1 << 5)
+#define RMI_F11_HAS_MF_EDGE_MOTION		(1 << 6)
+#define RMI_F11_HAS_MF_SCROLL_INERTIA		(1 << 7)
+
+/** Defs for Query 9. */
+#define RMI_F11_HAS_PEN				(1 << 0)
+#define RMI_F11_HAS_PROXIMITY			(1 << 1)
+#define RMI_F11_HAS_PALM_DET_SENSITIVITY	(1 << 2)
+#define RMI_F11_HAS_SUPPRESS_ON_PALM_DETECT	(1 << 3)
+#define RMI_F11_HAS_TWO_PEN_THRESHOLDS		(1 << 4)
+#define RMI_F11_HAS_CONTACT_GEOMETRY		(1 << 5)
+#define RMI_F11_HAS_PEN_HOVER_DISCRIMINATION	(1 << 6)
+#define RMI_F11_HAS_PEN_FILTERS			(1 << 7)
+
+/** Defs for Query 10. */
+#define RMI_F11_NR_TOUCH_SHAPES_MASK		0x1F
+
+/** Defs for Query 11 */
+
+#define RMI_F11_HAS_Z_TUNING			(1 << 0)
+#define RMI_F11_HAS_ALGORITHM_SELECTION		(1 << 1)
+#define RMI_F11_HAS_W_TUNING			(1 << 2)
+#define RMI_F11_HAS_PITCH_INFO			(1 << 3)
+#define RMI_F11_HAS_FINGER_SIZE			(1 << 4)
+#define RMI_F11_HAS_SEGMENTATION_AGGRESSIVENESS	(1 << 5)
+#define RMI_F11_HAS_XY_CLIP			(1 << 6)
+#define RMI_F11_HAS_DRUMMING_FILTER		(1 << 7)
+
+/** Defs for Query 12. */
+
+#define RMI_F11_HAS_GAPLESS_FINGER		(1 << 0)
+#define RMI_F11_HAS_GAPLESS_FINGER_TUNING	(1 << 1)
+#define RMI_F11_HAS_8BIT_W			(1 << 2)
+#define RMI_F11_HAS_ADJUSTABLE_MAPPING		(1 << 3)
+#define RMI_F11_HAS_INFO2			(1 << 4)
+#define RMI_F11_HAS_PHYSICAL_PROPS		(1 << 5)
+#define RMI_F11_HAS_FINGER_LIMIT		(1 << 6)
+#define RMI_F11_HAS_LINEAR_COEFF		(1 << 7)
+
+/** Defs for Query 13. */
+
+#define RMI_F11_JITTER_WINDOW_MASK		0x1F
+#define RMI_F11_JITTER_FILTER_MASK		0x60
+#define RMI_F11_JITTER_FILTER_SHIFT		5
+
+/** Defs for Query 14. */
+#define RMI_F11_LIGHT_CONTROL_MASK		0x03
+#define RMI_F11_IS_CLEAR			(1 << 2)
+#define RMI_F11_CLICKPAD_PROPS_MASK		0x18
+#define RMI_F11_CLICKPAD_PROPS_SHIFT		3
+#define RMI_F11_MOUSE_BUTTONS_MASK		0x60
+#define RMI_F11_MOUSE_BUTTONS_SHIFT		5
+#define RMI_F11_HAS_ADVANCED_GESTURES		(1 << 7)
+
+
+#define F11_LIGHT_CTL_NONE 0x00
+#define F11_LUXPAD	   0x01
+#define F11_DUAL_MODE      0x02
+
+#define F11_NOT_CLICKPAD     0x00
+#define F11_HINGED_CLICKPAD  0x01
+#define F11_UNIFORM_CLICKPAD 0x02
+
+/**
+ * Query registers 1 through 4 are always present.
  *
- * @nbr_of_sensors - the number of 2D sensors on the touch device.
- * @has_query9 - indicates the F11_2D_Query9 register exists.
- * @has_query11 - indicates the F11_2D_Query11 register exists.
- * @has_query12 - indicates the F11_2D_Query12 register exists.
- */
-struct f11_2d_device_query {
-	u8 nbr_of_sensors:3;
-	u8 has_query9:1;
-	u8 has_query11:1;
-	u8 has_query12:1;
-	u8 has_query27:1;
-	u8 has_query28:1;
-} __attribute__((__packed__));
-
-/** Query registers 1 through 4 are always present.
- * @number_of_fingers - describes the maximum number of fingers the 2-D sensor
+ * @nr_fingers - describes the maximum number of fingers the 2-D sensor
  * supports.
  * @has_rel - the sensor supports relative motion reporting.
  * @has_abs - the sensor supports absolute poition reporting.
@@ -100,27 +193,8 @@ struct f11_2d_device_query {
  * supports on the Y axis.
  * @max_electrodes - the total number of X and Y electrodes that may be
  * configured.
- */
-struct f11_2d_sensor_info {
-	/* query1 */
-	u8 number_of_fingers:3;
-	u8 has_rel:1;
-	u8 has_abs:1;
-	u8 has_gestures:1;
-	u8 has_sensitivity_adjust:1;
-	u8 configurable:1;
-	/* query2 */
-	u8 num_of_x_electrodes:7;
-	u8 reserved_1:1;
-	/* query3 */
-	u8 num_of_y_electrodes:7;
-	u8 reserved_2:1;
-	/* query4 */
-	u8 max_electrodes:7;
-	u8 reserved_3:1;
-} __attribute__((__packed__));
-
-/** Query 5 - this is present if the has_abs bit is set.
+ *
+ * Query 5 is present if the has_abs bit is set.
  *
  * @abs_data_size - describes the format of data reported by the absolute
  * data source.  Only one format (the kind used here) is supported at this
@@ -137,18 +211,8 @@ struct f11_2d_sensor_info {
  * @has_large_object_suppression - control register 58 and data register 28
  * exist.
  * @has_jitter_filter - query 13 and control 73..76 exist.
- */
-struct f11_2d_abs_info {
-	u8 abs_data_size:2;
-	u8 has_anchored_finger:1;
-	u8 has_adj_hyst:1;
-	u8 has_dribble:1;
-	u8 has_bending_correction:1;
-	u8 has_large_object_suppression:1;
-	u8 has_jitter_filter:1;
-} __attribute__((__packed__));
-
-/** Gesture information queries 7 and 8 are present if has_gestures bit is set.
+ *
+ * Gesture information queries 7 and 8 are present if has_gestures bit is set.
  *
  * @has_single_tap - a basic single-tap gesture is supported.
  * @has_tap_n_hold - tap-and-hold gesture is supported.
@@ -167,30 +231,17 @@ struct f11_2d_abs_info {
  * @has_scroll_zones - scrolling areas near the sensor edges are supported.
  * @has_individual_scroll_zones - if 1, then 4 scroll zones are supported;
  * if 0, then only two are supported.
- * @has_multi_finger_scroll - the multifinger_scrolling bit will be set when
+ * @has_mf_scroll - the multifinger_scrolling bit will be set when
  * more than one finger is involved in a scrolling action.
- */
-struct f11_2d_gesture_info {
-	u8 has_single_tap:1;
-	u8 has_tap_n_hold:1;
-	u8 has_double_tap:1;
-	u8 has_early_tap:1;
-	u8 has_flick:1;
-	u8 has_press:1;
-	u8 has_pinch:1;
-	u8 has_chiral:1;
-
-	u8 has_palm_det:1;
-	u8 has_rotate:1;
-	u8 has_touch_shapes:1;
-	u8 has_scroll_zones:1;
-	u8 has_individual_scroll_zones:1;
-	u8 has_multi_finger_scroll:1;
-	u8 has_mf_edge_motion:1;
-	u8 has_mf_scroll_inertia:1;
-} __attribute__((__packed__));
-
-/**
+ *
+ * Convenience for checking bytes in the gesture info registers.  This is done
+ * often enough that we put it here to declutter the conditionals
+ *
+ * @query7_nonzero - true if none of the query 7 bits are set
+ * @query8_nonzero - true if none of the query 8 bits are set
+ *
+ * Query 9 is present if the has_query9 is set.
+ *
  * @has_pen - detection of a stylus is supported and registers F11_2D_Ctrl20
  * and F11_2D_Ctrl21 exist.
  * @has_proximity - detection of fingers near the sensor is supported and
@@ -199,30 +250,14 @@ struct f11_2d_gesture_info {
  * feature and register F11_2D_Ctrl27 exists.
  * @has_two_pen_thresholds - is has_pen is also set, then F11_2D_Ctrl35 exists.
  * @has_contact_geometry - the sensor supports the use of contact geometry to
- * map absolute X and Y target positions and registers F11_2D_Data18.* through
- * F11_2D_Data27 exist.
- */
-struct f11_2d_query9 {
-	u8 has_pen:1;
-	u8 has_proximity:1;
-	u8 has_palm_det_sensitivity:1;
-	u8 has_suppress_on_palm_detect:1;
-	u8 has_two_pen_thresholds:1;
-	u8 has_contact_geometry:1;
-	u8 has_pen_hover_discrimination:1;
-	u8 has_pen_filters:1;
-} __attribute__((__packed__));
-
-/** Touch shape info (query 10) is present if has_touch_shapes is set.
+ * map absolute X and Y target positions and registers F11_2D_Data18
+ * through F11_2D_Data27 exist.
  *
- * @nbr_touch_shapes - the total number of touch shapes supported.
- */
-struct f11_2d_ts_info {
-	u8 nbr_touch_shapes:5;
-	u8 reserved:3;
-} __attribute__((__packed__));
-
-/** Query 11 is present if the has_query11 bit is set in query 0.
+ * Touch shape info (query 10) is present if has_touch_shapes is set.
+ *
+ * @nr_touch_shapes - the total number of touch shapes supported.
+ *
+ * Query 11 is present if the has_query11 bit is set in query 0.
  *
  * @has_z_tuning - if set, the sensor supports Z tuning and registers
  * F11_2D_Ctrl29 through F11_2D_Ctrl33 exist.
@@ -242,19 +277,9 @@ struct f11_2d_ts_info {
  * @has_drumming_filter - the sensor can be configured to distinguish
  * between a fast flick and a quick drumming movement and registers
  * F11_2D_Ctrl50 and F11_2D_Ctrl51 exist.
- */
-struct f11_2d_query11 {
-	u8 has_z_tuning:1;
-	u8 has_algorithm_selection:1;
-	u8 has_w_tuning:1;
-	u8 has_pitch_info:1;
-	u8 has_finger_size:1;
-	u8 has_segmentation_aggressiveness:1;
-	u8 has_XY_clip:1;
-	u8 has_drumming_filter:1;
-} __attribute__((__packed__));
-
-/**
+ *
+ * Query 12 is present if hasQuery12 bit is set.
+ *
  * @has_gapless_finger - control registers relating to gapless finger are
  * present.
  * @has_gapless_finger_tuning - additional control and data registers relating
@@ -266,29 +291,12 @@ struct f11_2d_query11 {
  * of the sensor are present.
  * @has_finger_limit - indicates that F11 Ctrl 80 exists.
  * @has_linear_coeff - indicates that F11 Ctrl 81 exists.
- */
-struct f11_2d_query12 {
-	u8 has_gapless_finger:1;
-	u8 has_gapless_finger_tuning:1;
-	u8 has_8bit_w:1;
-	u8 has_adjustable_mapping:1;
-	u8 has_info2:1;
-	u8 has_physical_props:1;
-	u8 has_finger_limit:1;
-	u8 has_linear_coeff_2:1;
-} __attribute__((__packed__));
-
-/** This register is present if Query 5's has_jitter_filter bit is set.
+ *
+ * Query 13 is present if Query 5's has_jitter_filter bit is set.
  * @jitter_window_size - used by Design Studio 4.
  * @jitter_filter_type - used by Design Studio 4.
- */
-struct f11_2d_query13 {
-	u8 jtter_window_size:5;
-	u8 jitter_filter_type:2;
-	u8 reserved:1;
-} __attribute__((__packed__));
-
-/** This register is present if query 12's has_general_info2 flag is set.
+ *
+ * Query 14 is present if query 12's has_general_info2 flag is set.
  *
  * @light_control - Indicates what light/led control features are present, if
  * any.
@@ -299,35 +307,102 @@ struct f11_2d_query13 {
  * @mouse_buttons - specifies the number of mouse buttons present (if any).
  * @has_advanced_gestures - advanced driver gestures are supported.
  */
-struct f11_2d_query14 {
-	u8 light_control:2;
-	u8 is_clear:1;
-	u8 clickpad_props:2;
-	u8 mouse_buttons:2;
-	u8 has_advanced_gestures:1;
-} __attribute__((__packed__));
-
-#define F11_LIGHT_CTL_NONE 0x00
-#define F11_LUXPAD	   0x01
-#define F11_DUAL_MODE      0x02
-
-#define F11_NOT_CLICKPAD     0x00
-#define F11_HINGED_CLICKPAD  0x01
-#define F11_UNIFORM_CLICKPAD 0x02
-
-/** See notes above for information about specific query register sets.
- */
 struct f11_2d_sensor_queries {
-	struct f11_2d_sensor_info info;
-	struct f11_2d_abs_info abs_info;
+	/* query1 */
+	u8 nr_fingers;
+	bool has_rel;
+	bool has_abs;
+	bool has_gestures;
+	bool has_sensitivity_adjust;
+	bool configurable;
+
+	/* query2 */
+	u8 nr_x_electrodes;
+
+	/* query3 */
+	u8 nr_y_electrodes;
+
+	/* query4 */
+	u8 max_electrodes;
+
+	/* query5 */
+	u8 abs_data_size;
+	bool has_anchored_finger;
+	bool has_adj_hyst;
+	bool has_dribble;
+	bool has_bending_correction;
+	bool has_large_object_suppression;
+	bool has_jitter_filter;
+
 	u8 f11_2d_query6;
-	struct f11_2d_gesture_info gesture_info;
-	struct f11_2d_query9 query9;
-	struct f11_2d_ts_info ts_info;
-	struct f11_2d_query11 features_1;
-	struct f11_2d_query12 features_2;
-	struct f11_2d_query13 jitter_filter;
-	struct f11_2d_query14 info_2;
+
+	/* query 7 */
+	bool has_single_tap;
+	bool has_tap_n_hold;
+	bool has_double_tap;
+	bool has_early_tap;
+	bool has_flick;
+	bool has_press;
+	bool has_pinch;
+	bool has_chiral;
+
+	bool query7_nonzero;
+
+	/* query 8 */
+	bool has_palm_det;
+	bool has_rotate;
+	bool has_touch_shapes;
+	bool has_scroll_zones;
+	bool has_individual_scroll_zones;
+	bool has_mf_scroll;
+	bool has_mf_edge_motion;
+	bool has_mf_scroll_inertia;
+
+	bool query8_nonzero;
+
+	/* Query 9 */
+	bool has_pen;
+	bool has_proximity;
+	bool has_palm_det_sensitivity;
+	bool has_suppress_on_palm_detect;
+	bool has_two_pen_thresholds;
+	bool has_contact_geometry;
+	bool has_pen_hover_discrimination;
+	bool has_pen_filters;
+
+	/* Query 10 */
+	u8 nr_touch_shapes;
+
+	/* Query 11. */
+	bool has_z_tuning;
+	bool has_algorithm_selection;
+	bool has_w_tuning;
+	bool has_pitch_info;
+	bool has_finger_size;
+	bool has_segmentation_aggressiveness;
+	bool has_XY_clip;
+	bool has_drumming_filter;
+
+	/* Query 12 */
+	bool has_gapless_finger;
+	bool has_gapless_finger_tuning;
+	bool has_8bit_w;
+	bool has_adjustable_mapping;
+	bool has_info2;
+	bool has_physical_props;
+	bool has_finger_limit;
+	bool has_linear_coeff_2;
+
+	/* Query 13 */
+	u8 jitter_window_size;
+	u8 jitter_filter_type;
+
+	/* Query 14 */
+	u8 light_control;
+	bool is_clear;
+	u8 clickpad_props;
+	u8 mouse_buttons;
+	bool has_advanced_gestures;
 };
 
 /**
@@ -772,7 +847,12 @@ struct f11_2d_sensor {
  * @sensors - per sensor data structures.
  */
 struct f11_data {
-	struct f11_2d_device_query dev_query;
+	u8 nr_sensors;
+	bool has_query9;
+	bool has_query11;
+	bool has_query12;
+	bool has_query27;
+	bool has_query28;
 	struct f11_2d_ctrl dev_controls;
 	struct mutex dev_controls_mutex;
 	u16 rezero_wait_ms;
