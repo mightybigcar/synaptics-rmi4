@@ -124,6 +124,7 @@ static struct rmi_device_platform_data tm2735_platformdata = {
 	.f11_sensor_data = tm2735_sensor_data,
 	.f11_sensor_count = ARRAY_SIZE(tm2735_sensor_data),
 	.post_resume = rmi_hid_post_resume,
+	.unified_input_device = 1,
 };
 
 #define BUFFER_SIZE_INCREMENT 32

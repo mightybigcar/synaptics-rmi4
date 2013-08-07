@@ -73,6 +73,7 @@ static void rmi_f11_rel_pos_report(struct f11_2d_sensor *sensor, u8 n_finger)
 {
 	struct f11_2d_data *data = &sensor->data;
 	struct rmi_f11_2d_axis_alignment *axis_align = &sensor->axis_align;
+	struct rmi_device_platform_data *pdata = to_rmi_platform_data(sensor->fn->rmi_dev);
 	s8 x, y;
 	s8 temp;
 
@@ -95,14 +96,13 @@ static void rmi_f11_rel_pos_report(struct f11_2d_sensor *sensor, u8 n_finger)
 	if (x || y) {
 		input_report_rel(sensor->input, REL_X, x);
 		input_report_rel(sensor->input, REL_Y, y);
-#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
-		input_report_rel(sensor->mouse_input, REL_X, x);
-		input_report_rel(sensor->mouse_input, REL_Y, y);
-#endif
+		if (!pdata->unified_input_device) {
+			input_report_rel(sensor->mouse_input, REL_X, x);
+			input_report_rel(sensor->mouse_input, REL_Y, y);
+		}
 	}
-#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
-	input_sync(sensor->mouse_input);
-#endif
+	if (!pdata->unified_input_device)
+		input_sync(sensor->mouse_input);
 }
 
 static int rmi_f11_abs_pos_report(struct f11_2d_sensor *sensor,
@@ -1101,10 +1101,9 @@ static int rmi_f11_register_devices(struct rmi_function *fn)
 	struct rmi_device *rmi_dev = fn->rmi_dev;
 	struct f11_data *f11 = fn->data;
 	struct input_dev *input_dev;
-#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
 	struct input_dev *input_dev_mouse;
 	struct rmi_driver *driver = rmi_dev->driver;
-#endif
+	struct rmi_device_platform_data *pdata = to_rmi_platform_data(rmi_dev);
 	int i;
 	struct rmi_driver_data *driver_data = dev_get_drvdata(&rmi_dev->dev);
 	int sensors_itertd = 0;
@@ -1117,31 +1116,31 @@ static int rmi_f11_register_devices(struct rmi_function *fn)
 	for (i = 0; i < (f11->dev_query.nbr_of_sensors + 1); i++) {
 		struct f11_2d_sensor *sensor = &f11->sensors[i];
 		sensors_itertd = i;
-#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
-		input_dev = input_allocate_device();
-		if (!input_dev) {
-			rc = -ENOMEM;
-			goto error_unregister;
-		}
-		sensor->input = input_dev;
-		if (driver->set_input_params) {
-			rc = driver->set_input_params(rmi_dev, input_dev);
-			if (rc < 0) {
-				dev_err(&fn->dev,
-				"%s: Error in setting input device.\n",
-				__func__);
+		if (pdata->unified_input_device) {
+			input_dev = driver_data->input;
+			sensor->input = input_dev;
+		} else {
+			input_dev = input_allocate_device();
+			if (!input_dev) {
+				rc = -ENOMEM;
 				goto error_unregister;
 			}
-		}
-		sprintf(sensor->input_phys, "%s.abs%d/input0",
-			dev_name(&fn->dev), i);
-		input_dev->phys = sensor->input_phys;
-		input_dev->dev.parent = &rmi_dev->dev;
-		input_set_drvdata(input_dev, f11);
-#else
-		input_dev = driver_data->input;
-		sensor->input = input_dev;
-#endif
+			sensor->input = input_dev;
+			if (driver->set_input_params) {
+				rc = driver->set_input_params(rmi_dev, input_dev);
+				if (rc < 0) {
+					dev_err(&fn->dev,
+						"%s: Error in setting input device.\n",
+						__func__);
+					goto error_unregister;
+				}
+			}
+			sprintf(sensor->input_phys, "%s.abs%d/input0",
+				dev_name(&fn->dev), i);
+			input_dev->phys = sensor->input_phys;
+			input_dev->dev.parent = &rmi_dev->dev;
+			input_set_drvdata(input_dev, f11);
+		} 
 
 		set_bit(EV_SYN, input_dev->evbit);
 		set_bit(EV_ABS, input_dev->evbit);
@@ -1156,20 +1155,20 @@ static int rmi_f11_register_devices(struct rmi_function *fn)
 			set_bit(REL_X, input_dev->relbit);
 			set_bit(REL_Y, input_dev->relbit);
 		}
-#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
-		rc = input_register_device(input_dev);
-		if (rc < 0) {
-			input_free_device(input_dev);
-			sensor->input = NULL;
-			goto error_unregister;
+
+		if (!pdata->unified_input_device) {
+			rc = input_register_device(input_dev);
+			if (rc < 0) {
+				input_free_device(input_dev);
+				sensor->input = NULL;
+				goto error_unregister;
+			}
 		}
-#endif
 
 		if (IS_ENABLED(CONFIG_RMI4_VIRTUAL_BUTTON))
 			register_virtual_buttons(fn, sensor);
 
-#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
-		if (sensor->sens_query.info.has_rel) {
+		if (!pdata->unified_input_device && sensor->sens_query.info.has_rel) {
 			/*create input device for mouse events  */
 			input_dev_mouse = input_allocate_device();
 			if (!input_dev_mouse) {
@@ -1210,7 +1209,7 @@ static int rmi_f11_register_devices(struct rmi_function *fn)
 
 			set_bit(BTN_RIGHT, input_dev_mouse->keybit);
 		}
-#endif
+
 		if (sensor->sensor_type == rmi_f11_sensor_touchpad) {
 			set_bit(EV_KEY, input_dev->evbit);
 			set_bit(BTN_LEFT, input_dev->keybit);
@@ -1226,37 +1225,38 @@ static int rmi_f11_register_devices(struct rmi_function *fn)
 
 	return 0;
 
-#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
 error_unregister:
-	for (; sensors_itertd > 0; sensors_itertd--) {
-		if (f11->sensors[sensors_itertd].input) {
-			if (f11->sensors[sensors_itertd].mouse_input) {
-				input_unregister_device(
-				   f11->sensors[sensors_itertd].mouse_input);
-				f11->sensors[sensors_itertd].mouse_input = NULL;
+	if (!pdata->unified_input_device) {
+		for (; sensors_itertd > 0; sensors_itertd--) {
+			if (f11->sensors[sensors_itertd].input) {
+				if (f11->sensors[sensors_itertd].mouse_input) {
+					input_unregister_device(
+				   		f11->sensors[sensors_itertd].mouse_input);
+					f11->sensors[sensors_itertd].mouse_input = NULL;
+				}
+				input_unregister_device(f11->sensors[i].input);
+				f11->sensors[i].input = NULL;
 			}
-			input_unregister_device(f11->sensors[i].input);
-			f11->sensors[i].input = NULL;
 		}
 	}
-#endif
 
 	return rc;
 }
 
-#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
 static void rmi_f11_free_devices(struct rmi_function *fn)
 {
 	struct f11_data *f11 = fn->data;
+	struct rmi_device_platform_data *pdata = to_rmi_platform_data(fn->rmi_dev);
 	int i;
-	for (i = 0; i < (f11->dev_query.nbr_of_sensors + 1); i++) {
-		if (f11->sensors[i].input)
-			input_unregister_device(f11->sensors[i].input);
-		if (f11->sensors[i].mouse_input)
-			input_unregister_device(f11->sensors[i].mouse_input);
+	if (!pdata->unified_input_device) {
+		for (i = 0; i < (f11->dev_query.nbr_of_sensors + 1); i++) {
+			if (f11->sensors[i].input)
+				input_unregister_device(f11->sensors[i].input);
+			if (f11->sensors[i].mouse_input)
+				input_unregister_device(f11->sensors[i].mouse_input);
+		}
 	}
 }
-#endif
 
 static int rmi_f11_config(struct rmi_function *fn)
 {
@@ -1345,9 +1345,7 @@ static SIMPLE_DEV_PM_OPS(rmi_f11_pm_ops, NULL, rmi_f11_resume);
 
 static int rmi_f11_remove(struct rmi_function *fn)
 {
-#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
 	rmi_f11_free_devices(fn);
-#endif
 	return 0;
 }
 

@@ -727,34 +727,36 @@ static int rmi_f30_register_device(struct rmi_function *fn)
 	int i;
 	int rc;
 	struct rmi_device *rmi_dev = fn->rmi_dev;
+	struct rmi_driver *driver = rmi_dev->driver;
+	struct rmi_device_platform_data *pdata = to_rmi_platform_data(rmi_dev);
 	struct rmi_fn_30_data *f30 = fn->data;
 	struct rmi_driver_data *driver_data = dev_get_drvdata(&rmi_dev->dev);
 	struct input_dev *input_dev;
 
-#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
-	input_dev = input_allocate_device();
-	if (!input_dev) {
-		dev_err(&fn->dev, "Failed to allocate input device.\n");
-		return -ENOMEM;
-	}
-
-	if (driver->set_input_params) {
-		rc = driver->set_input_params(rmi_dev, input_dev);
-		if (rc < 0) {
-			dev_err(&fn->dev, "%s: Error in setting input device.\n",
-			__func__);
-			goto error_free_device;
+	if (pdata->unified_input_device) {
+		input_dev = driver_data->input;
+	} else {
+		input_dev = input_allocate_device();
+		if (!input_dev) {
+			dev_err(&fn->dev, "Failed to allocate input device.\n");
+			return -ENOMEM;
 		}
-	}
 
-	sprintf(f30->input_phys, "%s/input0", dev_name(&fn->dev));
-	input_dev->phys = f30->input_phys;
-	input_dev->dev.parent = &rmi_dev->dev;
-	input_set_drvdata(input_dev, f30);
-	set_bit(EV_SYN, input_dev->evbit);
-#else
-	input_dev = driver_data->input;
-#endif
+		if (driver->set_input_params) {
+			rc = driver->set_input_params(rmi_dev, input_dev);
+			if (rc < 0) {
+				dev_err(&fn->dev, "%s: Error in setting input device.\n",
+					__func__);
+				goto error_free_device;
+			}
+		}
+
+		sprintf(f30->input_phys, "%s/input0", dev_name(&fn->dev));
+		input_dev->phys = f30->input_phys;
+		input_dev->dev.parent = &rmi_dev->dev;
+		input_set_drvdata(input_dev, f30);
+		set_bit(EV_SYN, input_dev->evbit);
+	}
 
 	f30->input = input_dev;
 
@@ -769,19 +771,18 @@ static int rmi_f30_register_device(struct rmi_function *fn)
 		input_set_capability(input_dev, EV_KEY, f30->gpioled_map[i]);
 	}
 
-#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
-	rc = input_register_device(input_dev);
-	if (rc < 0) {
-		dev_err(&fn->dev, "Failed to register input device.\n");
-		goto error_free_device;
+	if (!pdata->unified_input_device) {
+		rc = input_register_device(input_dev);
+		if (rc < 0) {
+			dev_err(&fn->dev, "Failed to register input device.\n");
+			goto error_free_device;
+		}
 	}
-#endif
 	return 0;
 
-#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
 error_free_device:
-	input_free_device(input_dev);
-#endif
+	if (!pdata->unified_input_device)
+		input_free_device(input_dev);
 
 	return rc;
 }
@@ -1258,9 +1259,8 @@ static int rmi_f30_create_sysfs(struct rmi_function *fn)
 static int rmi_f30_probe(struct rmi_function *fn)
 {
 	int rc;
-#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
 	struct rmi_fn_30_data *f30 = fn->data;
-#endif
+	struct rmi_device_platform_data *pdata = to_rmi_platform_data(fn->rmi_dev);
 
 	rc = rmi_f30_alloc_memory(fn);
 	if (rc < 0)
@@ -1276,17 +1276,12 @@ static int rmi_f30_probe(struct rmi_function *fn)
 
 	rc = rmi_f30_create_sysfs(fn);
 	if (rc < 0)
-#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
 		goto error_uregister_exit;
-#else
-		goto error_exit;
-#endif
 	return 0;
 
-#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
 error_uregister_exit:
-	input_unregister_device(f30->input);
-#endif
+	if (!pdata->unified_input_device)
+		input_unregister_device(f30->input);
 
 error_exit:
 	rmi_f30_free_memory(fn);
@@ -1297,6 +1292,12 @@ error_exit:
 
 static int rmi_f30_remove(struct rmi_function *fn)
 {
+	struct rmi_fn_30_data *f30 = fn->data;
+	struct rmi_device_platform_data *pdata = to_rmi_platform_data(fn->rmi_dev);
+
+	if (!pdata->unified_input_device)
+		input_unregister_device(f30->input);
+
         rmi_f30_free_memory(fn);
         return 0;
 }

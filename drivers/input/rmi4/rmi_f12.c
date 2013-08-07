@@ -390,10 +390,10 @@ static int rmi_f12_attention(struct rmi_function *fn,
 static int rmi_f12_remove(struct rmi_function *fn)
 {
 	struct f12_data *f12 = fn->data;
+	struct rmi_device_platform_data *pdata = to_rmi_platform_data(fn->rmi_dev);
 
-#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
-	input_unregister_device(f12->input);
-#endif
+	if (!pdata->unified_input_device)
+		input_unregister_device(f12->input);
 	devm_kfree(&fn->dev, f12->object_buf);
 	devm_kfree(&fn->dev, f12);
 	fn->data = NULL;
@@ -407,7 +407,9 @@ static int rmi_f12_probe(struct rmi_function *fn)
 	int retval;
 	struct input_dev *input_dev;
 	struct rmi_device *rmi_dev = fn->rmi_dev;
+	struct rmi_driver *driver = rmi_dev->driver;
 	struct rmi_driver_data *driver_data = dev_get_drvdata(&rmi_dev->dev);
+	struct rmi_device_platform_data *pdata = to_rmi_platform_data(rmi_dev);
 	unsigned long input_flags;
 
 	f12 = devm_kzalloc(&fn->dev, sizeof(struct f12_data), GFP_KERNEL);
@@ -451,26 +453,26 @@ static int rmi_f12_probe(struct rmi_function *fn)
 
 	read_sensor_tuning(fn);
 
-#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
-	input_dev = input_allocate_device();
-	if (!input_dev) {
-		retval = -ENOMEM;
-		goto error_free_data;
-	}
-	if (driver->set_input_params) {
-		retval = driver->set_input_params(fn->rmi_dev, input_dev);
-		if (retval < 0) {
-			dev_err(&fn->dev, "Error in setting input device.\n");
-			goto error_free_dev;
+	if (pdata->unified_input_device) {
+		input_dev = driver_data->input;
+	} else {
+		input_dev = input_allocate_device();
+		if (!input_dev) {
+			retval = -ENOMEM;
+			goto error_free_data;
 		}
+		if (driver->set_input_params) {
+			retval = driver->set_input_params(fn->rmi_dev, input_dev);
+			if (retval < 0) {
+				dev_err(&fn->dev, "Error in setting input device.\n");
+				goto error_free_dev;
+			}
+		}
+		sprintf(f12->input_phys, "%s/input0", dev_name(&fn->dev));
+		input_dev->phys = f12->input_phys;
+		input_dev->dev.parent = &rmi_dev->dev;
+		input_set_drvdata(input_dev, f12);
 	}
-	sprintf(f12->input_phys, "%s/input0", dev_name(&fn->dev));
-	input_dev->phys = f12->input_phys;
-	input_dev->dev.parent = &rmi_dev->dev;
-	input_set_drvdata(input_dev, f12);
-#else
-	input_dev = driver_data->input;
-#endif
 
 	set_bit(EV_SYN, input_dev->evbit);
 	set_bit(EV_ABS, input_dev->evbit);
@@ -518,19 +520,19 @@ static int rmi_f12_probe(struct rmi_function *fn)
 		set_bit(BTN_TOOL_QUINTTAP, input_dev->keybit);
 	}
 
-#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
-	retval = input_register_device(input_dev);
-	if (retval < 0)
-		goto error_free_dev;
-#endif
+	if (!pdata->unified_input_device) {
+		retval = input_register_device(input_dev);
+		if (retval < 0)
+			goto error_free_dev;
+	}
+
 	f12->input = input_dev;
 
 	return 0;
 
-#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
 error_free_dev:
-	input_free_device(input_dev);
-#endif
+	if (!pdata->unified_input_device)
+		input_free_device(input_dev);
 
 error_free_data:
 	devm_kfree(&fn->dev, f12->object_buf);

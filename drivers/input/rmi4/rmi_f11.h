@@ -766,11 +766,9 @@ struct f11_2d_sensor {
 	u32 type_a;
 	enum rmi_f11_sensor_type sensor_type;
 	struct input_dev *input;
-#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
 	struct input_dev *mouse_input;
 	char input_phys_mouse[NAME_BUFFER_SIZE];
 	char input_phys[NAME_BUFFER_SIZE];
-#endif
 	struct rmi_function *fn;
 	u8 suppress;
 	u8 suppress_highw;

@@ -970,7 +970,8 @@ static int rmi_driver_remove(struct rmi_device *rmi_dev)
 	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
 
 	disable_sensor(rmi_dev);
-	input_unregister_device(data->input);
+	if (data->input)
+		input_unregister_device(data->input);
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	if (IS_ENABLED(CONFIG_HAS_EARLYSUSPEND))
@@ -981,11 +982,15 @@ static int rmi_driver_remove(struct rmi_device *rmi_dev)
 	return 0;
 }
 
-static int create_input_device(struct rmi_driver_data * data)
+static int create_unified_input_device(struct rmi_driver_data * data)
 {
 	struct rmi_device *rmi_dev = data->rmi_dev;
 	struct rmi_driver * driver = rmi_dev->driver;
+	struct rmi_device_platform_data *pdata = to_rmi_platform_data(rmi_dev);
 	int rc;
+
+	if (!pdata->unified_input_device)
+		return 0;
 
 	data->input = input_allocate_device();
 	if (!data->input) {
@@ -1004,10 +1009,14 @@ static int create_input_device(struct rmi_driver_data * data)
 	return 0;
 }
 
-static int register_input_device(struct rmi_driver_data * data, struct device * dev)
+static int register_unified_input_device(struct rmi_driver_data * data, struct device * dev)
 {
 	int rc;
 	struct input_dev * input_dev = data->input;
+	struct rmi_device_platform_data *pdata = to_rmi_platform_data(data->rmi_dev);
+
+	if (!pdata->unified_input_device)
+		return 0;
 
 	sprintf(data->input_phys, "%s/input0",
 		dev_name(dev));
@@ -1051,7 +1060,7 @@ static int rmi_driver_probe(struct device *dev)
 	INIT_LIST_HEAD(&data->function_list);
 	data->rmi_dev = rmi_dev;
 	dev_set_drvdata(&rmi_dev->dev, data);
-	retval = create_input_device(data);
+	retval = create_unified_input_device(data);
 	if (retval < 0)
 		return retval;
 
@@ -1151,7 +1160,7 @@ static int rmi_driver_probe(struct device *dev)
 		goto err_free_data;
 	}
 
-	retval = register_input_device(data, &rmi_dev->dev);
+	retval = register_unified_input_device(data, &rmi_dev->dev);
 	if (retval < 0) {
 		dev_err(dev, "failed to register input device. Code: %d\n", retval);
 		goto err_free_data;
@@ -1228,6 +1237,8 @@ static int rmi_driver_probe(struct device *dev)
 	return 0;
 
  err_free_data:
+ 	if (data->input)
+		input_unregister_device(data->input);
 	rmi_free_function_list(rmi_dev);
 	return retval;
 }
