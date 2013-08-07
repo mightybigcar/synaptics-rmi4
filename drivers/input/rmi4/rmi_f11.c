@@ -46,7 +46,7 @@ enum finger_state_values {
 	F11_NO_FINGER	= 0x00,
 	F11_PRESENT	= 0x01,
 	F11_INACCURATE	= 0x02,
-	F11_RESERVED	= 0x03
+	F11_PRODUCT_SPECIFIC	= 0x03
 };
 
 /** F11_INACCURATE state is overloaded to indicate pen present. */
@@ -236,9 +236,7 @@ static void rmi_f11_finger_handler(struct f11_data *f11,
 		/* Possible of having 4 fingers per f_statet register */
 		finger_state = (f_state[i / 4] >> (2 * (i % 4))) &
 					FINGER_STATE_MASK;
-		if (finger_state == F11_RESERVED) {
-			pr_err("%s: Invalid finger state[%d]:0x%02x.", __func__,
-					i, finger_state);
+		if (finger_state == F11_PRODUCT_SPECIFIC) {
 			continue;
 		} else if ((finger_state == F11_PRESENT) ||
 				(finger_state == F11_INACCURATE)) {
