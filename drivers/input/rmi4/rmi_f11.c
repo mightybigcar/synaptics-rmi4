@@ -42,18 +42,10 @@
 #define DEFAULT_MIN_ABS_MT_TRACKING_ID 1
 #define DEFAULT_MAX_ABS_MT_TRACKING_ID 10
 
-/** Utility for checking bytes in the gesture info registers.  This is done
- * often enough that we put it here to declutter the conditionals.
- */
-static bool has_gesture_bits(const struct f11_2d_gesture_info *info,
-			     const u8 byte) {
-	return ((u8 *) info)[byte] != 0;
-}
-
 enum finger_state_values {
-	F11_NO_FINGER		= 0x00,
-	F11_PRESENT		= 0x01,
-	F11_INACCURATE		= 0x02,
+	F11_NO_FINGER	= 0x00,
+	F11_PRESENT	= 0x01,
+	F11_INACCURATE	= 0x02,
 	F11_PRODUCT_SPECIFIC	= 0x03
 };
 
@@ -63,7 +55,7 @@ enum finger_state_values {
 static int get_tool_type(struct f11_2d_sensor *sensor, u8 finger_state)
 {
 	if (IS_ENABLED(CONFIG_RMI4_F11_PEN) &&
-			sensor->sens_query.query9.has_pen &&
+			sensor->sens_query.has_pen &&
 			finger_state == F11_PEN)
 		return MT_TOOL_PEN;
 	return MT_TOOL_FINGER;
@@ -76,8 +68,8 @@ static void rmi_f11_rel_pos_report(struct f11_2d_sensor *sensor, u8 n_finger)
 	s8 x, y;
 	s8 temp;
 
-	x = data->rel_pos[n_finger].delta_x;
-	y = data->rel_pos[n_finger].delta_y;
+	x = data->rel_pos[n_finger * 2];
+	y = data->rel_pos[n_finger * 2 + 1];
 
 	x = min(F11_REL_POS_MAX, max(F11_REL_POS_MIN, (int)x));
 	y = min(F11_REL_POS_MAX, max(F11_REL_POS_MIN, (int)y));
@@ -110,19 +102,20 @@ static void rmi_f11_abs_pos_report(struct f11_data *f11,
 	int x, y, z;
 	int w_x, w_y, w_max, w_min, orient;
 	int temp;
+	u8 abs_base = n_finger * RMI_F11_ABS_BYTES;
 
 	x = y = z = w_x = w_y = w_min = w_max = orient = 0;
 
 	if (finger_state) {
-		x = ((data->abs_pos[n_finger].x_msb << 4) |
-			data->abs_pos[n_finger].x_lsb);
-		y = ((data->abs_pos[n_finger].y_msb << 4) |
-			data->abs_pos[n_finger].y_lsb);
-		z = data->abs_pos[n_finger].z;
-		w_x = data->abs_pos[n_finger].w_x;
-		w_y = data->abs_pos[n_finger].w_y;
+		x = (data->abs_pos[abs_base] << 4) |
+			(data->abs_pos[abs_base + 2] & 0x0F);
+		y = (data->abs_pos[abs_base + 1] << 4) |
+			(data->abs_pos[abs_base + 2] >> 4);
+		w_x = data->abs_pos[abs_base + 3] & 0x0F;
+		w_y = data->abs_pos[abs_base + 3] >> 4;
 		w_max = max(w_x, w_y);
 		w_min = min(w_x, w_y);
+		z = data->abs_pos[abs_base + 4];
 
 		if (axis_align->swap_axes) {
 			temp = x;
@@ -186,9 +179,9 @@ static void rmi_f11_abs_pos_report(struct f11_data *f11,
 		input_report_abs(sensor->input, ABS_MT_ORIENTATION, orient);
 		input_report_abs(sensor->input, ABS_MT_POSITION_X, x);
 		input_report_abs(sensor->input, ABS_MT_POSITION_Y, y);
-/*		dev_dbg(&sensor->fn->dev,
+		dev_dbg(&sensor->fn->dev,
 			"finger[%d]:%d - x:%d y:%d z:%d w_max:%d w_min:%d\n",
-			n_finger, finger_state, x, y, z, w_max, w_min);*/
+			n_finger, finger_state, x, y, z, w_max, w_min);
 	}
 	/* MT sync between fingers */
 	if (sensor->type_a)
@@ -205,12 +198,10 @@ static int rmi_f11_virtual_button_handler(struct f11_2d_sensor *sensor)
 	struct virtualbutton_map virtualbutton;
 
 	if (sensor->sens_query.has_gestures &&
-				sensor->data.gest_1->single_tap) {
+		(sensor->data.gest_1[0] & RMI_F11_SINGLE_TAP)) {
 		virtualbutton_map = &sensor->virtual_buttons;
-		x = ((sensor->data.abs_pos[0].x_msb << 4) |
-			sensor->data.abs_pos[0].x_lsb);
-		y = ((sensor->data.abs_pos[0].y_msb << 4) |
-			sensor->data.abs_pos[0].y_lsb);
+		x = (data->abs_pos[0] << 4) | (data->abs_pos[2] & 0x0F);
+		y = (data->abs_pos[0] << 4) | (data->abs_pos[2] >> 4);
 		for (i = 0; i < virtualbutton_map->buttons; i++) {
 			virtualbutton = virtualbutton_map->map[i];
 			if (x >= virtualbutton.x &&
@@ -231,6 +222,21 @@ static int rmi_f11_virtual_button_handler(struct f11_2d_sensor *sensor)
 #else
 #define rmi_f11_virtual_button_handler(sensor)
 #endif
+
+static void rmi_f11_shape_handler(struct f11_2d_sensor *sensor)
+{
+	u8 i;
+
+	if (!(sensor->data.gest_2[0] & RMI_F11_SHAPE))
+		return;
+
+	for (i = 0; i < sensor->sens_query.nr_touch_shapes; i++) {
+		bool pressed = !!(sensor->data.shapes[i / 8] & (1 << (i % 8)));
+		if (pressed)
+			dev_dbg(&sensor->fn->dev, "Shape %d pressed.\n", i);
+		// TODO: report this
+	}
+}
 
 static void rmi_f11_finger_handler(struct f11_data *f11,
 				   struct f11_2d_sensor *sensor)
@@ -257,7 +263,12 @@ static void rmi_f11_finger_handler(struct f11_data *f11,
 		if (sensor->data.rel_pos)
 			rmi_f11_rel_pos_report(sensor, i);
 	}
+
 	input_report_key(sensor->input, BTN_TOUCH, finger_pressed_count);
+
+	if (sensor->data.shapes)
+		rmi_f11_shape_handler(sensor);
+
 	input_sync(sensor->input);
 }
 
@@ -267,38 +278,36 @@ static int f11_2d_construct_data(struct f11_2d_sensor *sensor)
 	struct f11_2d_data *data = &sensor->data;
 	int i;
 
-	sensor->nbr_fingers = (query->info.number_of_fingers == 5 ? 10 :
-				query->info.number_of_fingers + 1);
+	sensor->nbr_fingers = (query->nr_fingers == 5 ? 10 :
+				query->nr_fingers + 1);
 
 	sensor->pkt_size = DIV_ROUND_UP(sensor->nbr_fingers, 4);
 
-	if (query->info.has_abs)
+	if (query->has_abs)
 		sensor->pkt_size += (sensor->nbr_fingers * 5);
 
-	if (query->info.has_rel)
+	if (query->has_rel)
 		sensor->pkt_size +=  (sensor->nbr_fingers * 2);
 
 	/* Check if F11_2D_Query7 is non-zero */
-	if (has_gesture_bits(&query->gesture_info, 0))
+	if (query->query7_nonzero)
 		sensor->pkt_size += sizeof(u8);
 
 	/* Check if F11_2D_Query7 or F11_2D_Query8 is non-zero */
-	if (has_gesture_bits(&query->gesture_info, 0) ||
-				has_gesture_bits(&query->gesture_info, 1))
+	if (query->query7_nonzero || query->query8_nonzero)
 		sensor->pkt_size += sizeof(u8);
 
-	if (query->gesture_info.has_pinch || query->gesture_info.has_flick
-			|| query->gesture_info.has_rotate) {
+	if (query->has_pinch || query->has_flick || query->has_rotate) {
 		sensor->pkt_size += 3;
-		if (!query->gesture_info.has_flick)
+		if (!query->has_flick)
 			sensor->pkt_size--;
-		if (!query->gesture_info.has_rotate)
+		if (!query->has_rotate)
 			sensor->pkt_size--;
 	}
 
-	if (query->gesture_info.has_touch_shapes)
+	if (query->has_touch_shapes)
 		sensor->pkt_size +=
-			DIV_ROUND_UP(query->ts_info.nbr_touch_shapes + 1, 8);
+			DIV_ROUND_UP(query->nr_touch_shapes + 1, 8);
 
 	sensor->data_pkt = kzalloc(sensor->pkt_size, GFP_KERNEL);
 	if (!sensor->data_pkt)
@@ -307,58 +316,52 @@ static int f11_2d_construct_data(struct f11_2d_sensor *sensor)
 	data->f_state = sensor->data_pkt;
 	i = DIV_ROUND_UP(sensor->nbr_fingers, 4);
 
-	if (query->info.has_abs) {
-		data->abs_pos = (struct f11_2d_data_1_5 *)
-				&sensor->data_pkt[i];
-		i += (sensor->nbr_fingers * 5);
+	if (query->has_abs) {
+		data->abs_pos = &sensor->data_pkt[i];
+		i += (sensor->nbr_fingers * RMI_F11_ABS_BYTES);
 	}
 
-	if (query->info.has_rel) {
-		data->rel_pos = (struct f11_2d_data_6_7 *)
-				&sensor->data_pkt[i];
-		i += (sensor->nbr_fingers * 2);
+	if (query->has_rel) {
+		data->rel_pos = &sensor->data_pkt[i];
+		i += (sensor->nbr_fingers * RMI_F11_REL_BYTES);
 	}
 
-	if (has_gesture_bits(&query->gesture_info, 0)) {
-		data->gest_1 = (struct f11_2d_data_8 *)&sensor->data_pkt[i];
+	if (query->query7_nonzero) {
+		data->gest_1 = &sensor->data_pkt[i];
 		i++;
 	}
 
-	if (has_gesture_bits(&query->gesture_info, 0) ||
-				has_gesture_bits(&query->gesture_info, 1)) {
-		data->gest_2 = (struct f11_2d_data_9 *)&sensor->data_pkt[i];
+	if (query->query7_nonzero || query->query8_nonzero) {
+		data->gest_2 = &sensor->data_pkt[i];
 		i++;
 	}
 
-	if (query->gesture_info.has_pinch) {
-		data->pinch = (struct f11_2d_data_10 *)&sensor->data_pkt[i];
+	if (query->has_pinch) {
+		data->pinch = &sensor->data_pkt[i];
 		i++;
 	}
 
-	if (query->gesture_info.has_flick) {
-		if (query->gesture_info.has_pinch) {
-			data->flick = (struct f11_2d_data_10_12 *)data->pinch;
+	if (query->has_flick) {
+		if (query->has_pinch) {
+			data->flick = data->pinch;
 			i += 2;
 		} else {
-			data->flick = (struct f11_2d_data_10_12 *)
-					&sensor->data_pkt[i];
+			data->flick = &sensor->data_pkt[i];
 			i += 3;
 		}
 	}
 
-	if (query->gesture_info.has_rotate) {
-		if (query->gesture_info.has_flick) {
-			data->rotate = (struct f11_2d_data_11_12 *)
-					(data->flick + 1);
+	if (query->has_rotate) {
+		if (query->has_flick) {
+			data->rotate = data->flick + 1;
 		} else {
-			data->rotate = (struct f11_2d_data_11_12 *)
-					&sensor->data_pkt[i];
+			data->rotate = &sensor->data_pkt[i];
 			i += 2;
 		}
 	}
 
-	if (query->gesture_info.has_touch_shapes)
-		data->shapes = (struct f11_2d_data_13 *)&sensor->data_pkt[i];
+	if (query->has_touch_shapes)
+		data->shapes = &sensor->data_pkt[i];
 
 	return 0;
 }
@@ -366,213 +369,13 @@ static int f11_2d_construct_data(struct f11_2d_sensor *sensor)
 static int f11_read_control_regs(struct rmi_function *fn,
 				struct f11_2d_ctrl *ctrl, u16 ctrl_base_addr) {
 	struct rmi_device *rmi_dev = fn->rmi_dev;
-	u16 read_address = ctrl_base_addr;
-	int error = 0;
+	int error;
 
-	ctrl->ctrl0_9_address = read_address;
-	error = rmi_read_block(rmi_dev, read_address, ctrl->ctrl0_9,
-		sizeof(*ctrl->ctrl0_9));
+	ctrl->ctrl0_9_address = ctrl_base_addr;
+	error = rmi_read_block(rmi_dev, ctrl_base_addr, ctrl->ctrl0_9, 10);
 	if (error < 0) {
-		dev_err(&fn->dev, "Failed to read ctrl0, code: %d.\n",
-			error);
+		dev_err(&fn->dev, "Failed to read ctrl0, code: %d.\n", error);
 		return error;
-	}
-	read_address += sizeof(*ctrl->ctrl0_9);
-
-	if (ctrl->ctrl10) {
-		error = rmi_read_block(rmi_dev, read_address,
-			ctrl->ctrl10, sizeof(*ctrl->ctrl10));
-		if (error < 0) {
-			dev_err(&fn->dev,
-				"Failed to read ctrl10, code: %d.\n", error);
-			return error;
-		}
-		read_address += sizeof(*ctrl->ctrl10);
-	}
-
-	if (ctrl->ctrl11) {
-		error = rmi_read_block(rmi_dev, read_address,
-			ctrl->ctrl11, sizeof(*ctrl->ctrl11));
-		if (error < 0) {
-			dev_err(&fn->dev,
-				"Failed to read ctrl11, code: %d.\n", error);
-			return error;
-		}
-		read_address += sizeof(*ctrl->ctrl11);
-	}
-
-	if (ctrl->ctrl14) {
-		error = rmi_read_block(rmi_dev, read_address,
-			ctrl->ctrl14, sizeof(*ctrl->ctrl14));
-		if (error < 0) {
-			dev_err(&fn->dev,
-				"Failed to read ctrl14, code: %d.\n", error);
-			return error;
-		}
-		read_address += sizeof(*ctrl->ctrl14);
-	}
-
-	if (ctrl->ctrl15) {
-		error = rmi_read_block(rmi_dev, read_address,
-			ctrl->ctrl15, sizeof(*ctrl->ctrl15));
-		if (error < 0) {
-			dev_err(&fn->dev,
-				"Failed to read ctrl15, code: %d.\n", error);
-			return error;
-		}
-		read_address += sizeof(*ctrl->ctrl15);
-	}
-
-	if (ctrl->ctrl16) {
-		error = rmi_read_block(rmi_dev, read_address,
-			ctrl->ctrl16, sizeof(*ctrl->ctrl16));
-		if (error < 0) {
-			dev_err(&fn->dev,
-				"Failed to read ctrl16, code: %d.\n", error);
-			return error;
-		}
-		read_address += sizeof(*ctrl->ctrl16);
-	}
-
-	if (ctrl->ctrl17) {
-		error = rmi_read_block(rmi_dev, read_address,
-			ctrl->ctrl17, sizeof(*ctrl->ctrl17));
-		if (error < 0) {
-			dev_err(&fn->dev,
-				"Failed to read ctrl17, code: %d.\n", error);
-			return error;
-		}
-		read_address += sizeof(*ctrl->ctrl17);
-	}
-
-	if (ctrl->ctrl18_19) {
-		error = rmi_read_block(rmi_dev, read_address,
-			ctrl->ctrl18_19, sizeof(*ctrl->ctrl18_19));
-		if (error < 0) {
-			dev_err(&fn->dev,
-				"Failed to read ctrl18_19, code: %d.\n", error);
-			return error;
-		}
-		read_address += sizeof(*ctrl->ctrl18_19);
-	}
-
-	if (ctrl->ctrl20_21) {
-		error = rmi_read_block(rmi_dev, read_address,
-			ctrl->ctrl20_21, sizeof(*ctrl->ctrl20_21));
-		if (error < 0) {
-			dev_err(&fn->dev,
-				"Failed to read ctrl20_21, code: %d.\n", error);
-			return error;
-		}
-		read_address += sizeof(*ctrl->ctrl20_21);
-	}
-
-	if (ctrl->ctrl22_26) {
-		error = rmi_read_block(rmi_dev, read_address,
-			ctrl->ctrl22_26, sizeof(*ctrl->ctrl22_26));
-		if (error < 0) {
-			dev_err(&fn->dev,
-				"Failed to read ctrl22_26, code: %d.\n", error);
-			return error;
-		}
-		read_address += sizeof(*ctrl->ctrl22_26);
-	}
-
-	if (ctrl->ctrl27) {
-		error = rmi_read_block(rmi_dev, read_address,
-			ctrl->ctrl27, sizeof(*ctrl->ctrl27));
-		if (error < 0) {
-			dev_err(&fn->dev,
-				"Failed to read ctrl27, code: %d.\n", error);
-			return error;
-		}
-		read_address += sizeof(*ctrl->ctrl27);
-	}
-
-	if (ctrl->ctrl28) {
-		error = rmi_read_block(rmi_dev, read_address,
-			ctrl->ctrl28, sizeof(*ctrl->ctrl28));
-		if (error < 0) {
-			dev_err(&fn->dev,
-				"Failed to read ctrl28, code: %d.\n", error);
-			return error;
-		}
-		read_address += sizeof(*ctrl->ctrl28);
-	}
-
-	if (ctrl->ctrl29_30) {
-		error = rmi_read_block(rmi_dev, read_address,
-			ctrl->ctrl29_30, sizeof(*ctrl->ctrl29_30));
-		if (error < 0) {
-			dev_err(&fn->dev,
-				"Failed to read ctrl29_30, code: %d.\n", error);
-			return error;
-		}
-		read_address += sizeof(*ctrl->ctrl29_30);
-	}
-	return 0;
-}
-
-static int f11_allocate_control_regs(struct rmi_function *fn,
-				struct f11_2d_device_query *device_query,
-				struct f11_2d_sensor_queries *sensor_query,
-				struct f11_2d_ctrl *ctrl,
-				u16 ctrl_base_addr) {
-
-	ctrl->ctrl0_9 = devm_kzalloc(&fn->dev,
-				     sizeof(struct f11_2d_ctrl0_9), GFP_KERNEL);
-	if (!ctrl->ctrl0_9)
-		return -ENOMEM;
-	if (has_gesture_bits(&sensor_query->gesture_info, 0)) {
-		ctrl->ctrl10 = devm_kzalloc(&fn->dev,
-			sizeof(struct f11_2d_ctrl10), GFP_KERNEL);
-		if (!ctrl->ctrl10)
-			return -ENOMEM;
-	}
-
-	if (has_gesture_bits(&sensor_query->gesture_info, 1)) {
-		ctrl->ctrl11 = devm_kzalloc(&fn->dev,
-			sizeof(struct f11_2d_ctrl11), GFP_KERNEL);
-		if (!ctrl->ctrl11)
-			return -ENOMEM;
-	}
-
-	if (device_query->has_query9 && sensor_query->query9.has_pen) {
-		ctrl->ctrl20_21 = devm_kzalloc(&fn->dev,
-			sizeof(struct f11_2d_ctrl20_21), GFP_KERNEL);
-		if (!ctrl->ctrl20_21)
-			return -ENOMEM;
-	}
-
-	if (device_query->has_query9 && sensor_query->query9.has_proximity) {
-		ctrl->ctrl22_26 = devm_kzalloc(&fn->dev,
-			sizeof(struct f11_2d_ctrl22_26), GFP_KERNEL);
-		if (!ctrl->ctrl22_26)
-			return -ENOMEM;
-	}
-
-	if (device_query->has_query9 &&
-		(sensor_query->query9.has_palm_det_sensitivity ||
-		sensor_query->query9.has_suppress_on_palm_detect)) {
-		ctrl->ctrl27 = devm_kzalloc(&fn->dev,
-			sizeof(struct f11_2d_ctrl27), GFP_KERNEL);
-		if (!ctrl->ctrl27)
-			return -ENOMEM;
-	}
-
-	if (sensor_query->gesture_info.has_multi_finger_scroll) {
-		ctrl->ctrl28 = devm_kzalloc(&fn->dev,
-			sizeof(struct f11_2d_ctrl28), GFP_KERNEL);
-		if (!ctrl->ctrl28)
-			return -ENOMEM;
-	}
-
-	if (device_query->has_query11 &&
-			sensor_query->features_1.has_z_tuning) {
-		ctrl->ctrl29_30 = devm_kzalloc(&fn->dev,
-			sizeof(struct f11_2d_ctrl29_30), GFP_KERNEL);
-		if (!ctrl->ctrl29_30)
-			return -ENOMEM;
 	}
 
 	return 0;
@@ -584,139 +387,68 @@ static int f11_write_control_regs(struct rmi_function *fn,
 					u16 ctrl_base_addr)
 {
 	struct rmi_device *rmi_dev = fn->rmi_dev;
-	u16 write_address = ctrl_base_addr;
 	int error;
 
-	error = rmi_write_block(rmi_dev, write_address,
-				ctrl->ctrl0_9,
-				 sizeof(*ctrl->ctrl0_9));
+	error = rmi_write_block(rmi_dev, ctrl_base_addr, ctrl->ctrl0_9, 10);
 	if (error < 0)
 		return error;
-	write_address += sizeof(ctrl->ctrl0_9);
-
-	if (ctrl->ctrl10) {
-		error = rmi_write_block(rmi_dev, write_address,
-					ctrl->ctrl10, sizeof(*ctrl->ctrl10));
-		if (error < 0)
-			return error;
-		write_address++;
-	}
-
-	if (ctrl->ctrl11) {
-		error = rmi_write_block(rmi_dev, write_address,
-					ctrl->ctrl11, sizeof(*ctrl->ctrl11));
-		if (error < 0)
-			return error;
-		write_address++;
-	}
-
-	if (ctrl->ctrl14) {
-		error = rmi_write_block(rmi_dev, write_address,
-				ctrl->ctrl14, sizeof(ctrl->ctrl14));
-		if (error < 0)
-			return error;
-		write_address += sizeof(*ctrl->ctrl15);
-	}
-
-	if (ctrl->ctrl15) {
-		error = rmi_write_block(rmi_dev, write_address,
-				ctrl->ctrl15, sizeof(*ctrl->ctrl15));
-		if (error < 0)
-			return error;
-		write_address += sizeof(*ctrl->ctrl15);
-	}
-
-	if (ctrl->ctrl16) {
-		error = rmi_write_block(rmi_dev, write_address,
-				ctrl->ctrl16, sizeof(*ctrl->ctrl16));
-		if (error < 0)
-			return error;
-		write_address += sizeof(*ctrl->ctrl16);
-	}
-
-	if (ctrl->ctrl17) {
-		error = rmi_write_block(rmi_dev, write_address,
-				ctrl->ctrl17, sizeof(*ctrl->ctrl17));
-		if (error < 0)
-			return error;
-		write_address += sizeof(*ctrl->ctrl17);
-	}
-
-	if (ctrl->ctrl18_19) {
-		error = rmi_write_block(rmi_dev, write_address,
-			ctrl->ctrl18_19, sizeof(*ctrl->ctrl18_19));
-		if (error < 0)
-			return error;
-		write_address += sizeof(*ctrl->ctrl18_19);
-	}
-
-	if (ctrl->ctrl20_21) {
-		error = rmi_write_block(rmi_dev, write_address,
-			ctrl->ctrl20_21, sizeof(*ctrl->ctrl20_21));
-		if (error < 0)
-			return error;
-		write_address += sizeof(*ctrl->ctrl20_21);
-	}
-
-	if (ctrl->ctrl22_26) {
-		error = rmi_write_block(rmi_dev, write_address,
-			ctrl->ctrl22_26, sizeof(*ctrl->ctrl22_26));
-		if (error < 0)
-			return error;
-		write_address += sizeof(*ctrl->ctrl22_26);
-	}
-
-	if (ctrl->ctrl27) {
-		error = rmi_write_block(rmi_dev, write_address,
-			ctrl->ctrl27, sizeof(*ctrl->ctrl27));
-		if (error < 0)
-			return error;
-		write_address += sizeof(*ctrl->ctrl27);
-	}
-
-	if (ctrl->ctrl28) {
-		error = rmi_write_block(rmi_dev, write_address,
-			ctrl->ctrl28, sizeof(*ctrl->ctrl28));
-		if (error < 0)
-			return error;
-		write_address += sizeof(*ctrl->ctrl28);
-	}
-
-	if (ctrl->ctrl29_30) {
-		error = rmi_write_block(rmi_dev, write_address,
-					ctrl->ctrl29_30,
-					sizeof(struct f11_2d_ctrl29_30));
-		if (error < 0)
-			return error;
-		write_address += sizeof(struct f11_2d_ctrl29_30);
-	}
 
 	return 0;
 }
 
 static int rmi_f11_get_query_parameters(struct rmi_device *rmi_dev,
-			struct f11_2d_device_query *dev_query,
+			struct f11_data *f11,
 			struct f11_2d_sensor_queries *sensor_query,
 			u16 query_base_addr)
 {
 	int query_size;
 	int rc;
+	u8 query_buf[4];
 
-	rc = rmi_read_block(rmi_dev, query_base_addr,
-			    &sensor_query->info, sizeof(sensor_query->info));
+	rc = rmi_read_block(rmi_dev, query_base_addr, query_buf, 4);
 	if (rc < 0)
 		return rc;
-	query_size = sizeof(sensor_query->info);
 
-	if (sensor_query->info.has_abs) {
-		rc = rmi_read(rmi_dev, query_base_addr + query_size,
-					&sensor_query->abs_info);
+	sensor_query->nr_fingers = query_buf[0] & RMI_F11_NR_FINGERS_MASK;
+	sensor_query->has_rel = !!(query_buf[0] & RMI_F11_HAS_REL);
+	sensor_query->has_abs = !!(query_buf[0] & RMI_F11_HAS_ABS);
+	sensor_query->has_gestures = !!(query_buf[0] & RMI_F11_HAS_GESTURES);
+	sensor_query->has_sensitivity_adjust =
+	!!(query_buf[0] && RMI_F11_HAS_SENSITIVITY_ADJ);
+	sensor_query->configurable = !!(query_buf[0] & RMI_F11_CONFIGURABLE);
+
+	sensor_query->nr_x_electrodes =
+				query_buf[1] & RMI_F11_NR_ELECTRODES_MASK;
+	sensor_query->nr_y_electrodes =
+				query_buf[2] & RMI_F11_NR_ELECTRODES_MASK;
+	sensor_query->max_electrodes =
+				query_buf[3] & RMI_F11_NR_ELECTRODES_MASK;
+
+	query_size = 4;
+
+	if (sensor_query->has_abs) {
+		rc = rmi_read(rmi_dev, query_base_addr + query_size, query_buf);
 		if (rc < 0)
 			return rc;
+
+		sensor_query->abs_data_size =
+			query_buf[0] & RMI_F11_ABS_DATA_SIZE_MASK;
+		sensor_query->has_anchored_finger =
+			!!(query_buf[0] & RMI_F11_HAS_ANCHORED_FINGER);
+		sensor_query->has_adj_hyst =
+			!!(query_buf[0] & RMI_F11_HAS_ADJ_HYST);
+		sensor_query->has_dribble =
+			!!(query_buf[0] & RMI_F11_HAS_DRIBBLE);
+		sensor_query->has_bending_correction =
+			!!(query_buf[0] & RMI_F11_HAS_BENDING_CORRECTION);
+		sensor_query->has_large_object_suppression =
+		!!(query_buf[0] && RMI_F11_HAS_LARGE_OBJECT_SUPPRESSION);
+		sensor_query->has_jitter_filter =
+			!!(query_buf[0] & RMI_F11_HAS_JITTER_FILTER);
 		query_size++;
 	}
 
-	if (sensor_query->info.has_rel) {
+	if (sensor_query->has_rel) {
 		rc = rmi_read(rmi_dev, query_base_addr + query_size,
 					&sensor_query->f11_2d_query6);
 		if (rc < 0)
@@ -724,67 +456,178 @@ static int rmi_f11_get_query_parameters(struct rmi_device *rmi_dev,
 		query_size++;
 	}
 
-	if (sensor_query->info.has_gestures) {
+	if (sensor_query->has_gestures) {
 		rc = rmi_read_block(rmi_dev, query_base_addr + query_size,
-					&sensor_query->gesture_info,
-					sizeof(sensor_query->gesture_info));
+					query_buf, 2);
 		if (rc < 0)
 			return rc;
-		query_size += sizeof(sensor_query->gesture_info);
+
+		sensor_query->has_single_tap =
+			!!(query_buf[0] & RMI_F11_HAS_SINGLE_TAP);
+		sensor_query->has_tap_n_hold =
+			!!(query_buf[0] & RMI_F11_HAS_TAP_AND_HOLD);
+		sensor_query->has_double_tap =
+			!!(query_buf[0] & RMI_F11_HAS_DOUBLE_TAP);
+		sensor_query->has_early_tap =
+			!!(query_buf[0] & RMI_F11_HAS_EARLY_TAP);
+		sensor_query->has_flick =
+			!!(query_buf[0] & RMI_F11_HAS_FLICK);
+		sensor_query->has_press =
+			!!(query_buf[0] & RMI_F11_HAS_PRESS);
+		sensor_query->has_pinch =
+			!!(query_buf[0] & RMI_F11_HAS_PINCH);
+		sensor_query->has_chiral =
+			!!(query_buf[0] & RMI_F11_HAS_CHIRAL);
+
+		/* query 8 */
+		sensor_query->has_palm_det =
+			!!(query_buf[1] & RMI_F11_HAS_PALM_DET);
+		sensor_query->has_rotate =
+			!!(query_buf[1] & RMI_F11_HAS_ROTATE);
+		sensor_query->has_touch_shapes =
+			!!(query_buf[1] & RMI_F11_HAS_TOUCH_SHAPES);
+		sensor_query->has_scroll_zones =
+			!!(query_buf[1] & RMI_F11_HAS_SCROLL_ZONES);
+		sensor_query->has_individual_scroll_zones =
+			!!(query_buf[1] & RMI_F11_HAS_INDIVIDUAL_SCROLL_ZONES);
+		sensor_query->has_mf_scroll =
+			!!(query_buf[1] & RMI_F11_HAS_MF_SCROLL);
+		sensor_query->has_mf_edge_motion =
+			!!(query_buf[1] & RMI_F11_HAS_MF_EDGE_MOTION);
+		sensor_query->has_mf_scroll_inertia =
+			!!(query_buf[1] & RMI_F11_HAS_MF_SCROLL_INERTIA);
+
+		sensor_query->query7_nonzero = !!(query_buf[0]);
+		sensor_query->query8_nonzero = !!(query_buf[1]);
+
+		query_size += 2;
 	}
 
-	if (dev_query->has_query9) {
+	if (f11->has_query9) {
 		rc = rmi_read_block(rmi_dev, query_base_addr + query_size,
-					&sensor_query->query9,
-					sizeof(sensor_query->query9));
+				    query_buf, 1);
 		if (rc < 0)
 			return rc;
-		query_size += sizeof(sensor_query->query9);
+
+		sensor_query->has_pen =
+			!!(query_buf[0] & RMI_F11_HAS_PEN);
+		sensor_query->has_proximity =
+			!!(query_buf[0] & RMI_F11_HAS_PROXIMITY);
+		sensor_query->has_palm_det_sensitivity =
+			!!(query_buf[0] & RMI_F11_HAS_PALM_DET_SENSITIVITY);
+		sensor_query->has_suppress_on_palm_detect =
+			!!(query_buf[0] & RMI_F11_HAS_SUPPRESS_ON_PALM_DETECT);
+		sensor_query->has_two_pen_thresholds =
+			!!(query_buf[0] & RMI_F11_HAS_TWO_PEN_THRESHOLDS);
+		sensor_query->has_contact_geometry =
+			!!(query_buf[0] & RMI_F11_HAS_CONTACT_GEOMETRY);
+		sensor_query->has_pen_hover_discrimination =
+			!!(query_buf[0] & RMI_F11_HAS_PEN_HOVER_DISCRIMINATION);
+		sensor_query->has_pen_filters =
+			!!(query_buf[0] & RMI_F11_HAS_PEN_FILTERS);
+
+		query_size++;
 	}
 
-	if (sensor_query->gesture_info.has_touch_shapes) {
+	if (sensor_query->has_touch_shapes) {
 		rc = rmi_read_block(rmi_dev, query_base_addr + query_size,
-					&sensor_query->ts_info,
-					sizeof(sensor_query->ts_info));
+					query_buf, 1);
 		if (rc < 0)
 			return rc;
-		query_size += sizeof(sensor_query->ts_info);
+
+		sensor_query->nr_touch_shapes = query_buf[0] &
+				RMI_F11_NR_TOUCH_SHAPES_MASK;
+
+		query_size++;
 	}
 
-	if (dev_query->has_query11) {
+	if (f11->has_query11) {
 		rc = rmi_read_block(rmi_dev, query_base_addr + query_size,
-					&sensor_query->features_1,
-					sizeof(sensor_query->features_1));
+				    query_buf, 1);
 		if (rc < 0)
 			return rc;
-		query_size += sizeof(sensor_query->features_1);
+
+		sensor_query->has_z_tuning =
+			!!(query_buf[0] & RMI_F11_HAS_Z_TUNING);
+		sensor_query->has_algorithm_selection =
+			!!(query_buf[0] & RMI_F11_HAS_ALGORITHM_SELECTION);
+		sensor_query->has_w_tuning =
+			!!(query_buf[0] & RMI_F11_HAS_W_TUNING);
+		sensor_query->has_pitch_info =
+			!!(query_buf[0] & RMI_F11_HAS_PITCH_INFO);
+		sensor_query->has_finger_size =
+			!!(query_buf[0] & RMI_F11_HAS_FINGER_SIZE);
+		sensor_query->has_segmentation_aggressiveness =
+			!!(query_buf[0] & RMI_F11_HAS_SEGMENTATION_AGGRESSIVENESS);
+		sensor_query->has_XY_clip =
+			!!(query_buf[0] & RMI_F11_HAS_XY_CLIP);
+		sensor_query->has_drumming_filter =
+			!!(query_buf[0] & RMI_F11_HAS_DRUMMING_FILTER);
+
+		query_size++;
 	}
 
-	if (dev_query->has_query12) {
+	if (f11->has_query12) {
 		rc = rmi_read_block(rmi_dev, query_base_addr + query_size,
-					&sensor_query->features_2,
-					sizeof(sensor_query->features_2));
+				    query_buf, 1);
 		if (rc < 0)
 			return rc;
-		query_size += sizeof(sensor_query->features_2);
+
+		sensor_query->has_gapless_finger =
+			!!(query_buf[0] & RMI_F11_HAS_GAPLESS_FINGER);
+		sensor_query->has_gapless_finger_tuning =
+			!!(query_buf[0] & RMI_F11_HAS_GAPLESS_FINGER_TUNING);
+		sensor_query->has_8bit_w =
+			!!(query_buf[0] & RMI_F11_HAS_8BIT_W);
+		sensor_query->has_adjustable_mapping =
+			!!(query_buf[0] & RMI_F11_HAS_ADJUSTABLE_MAPPING);
+		sensor_query->has_info2 =
+			!!(query_buf[0] & RMI_F11_HAS_INFO2);
+		sensor_query->has_physical_props =
+			!!(query_buf[0] & RMI_F11_HAS_PHYSICAL_PROPS);
+		sensor_query->has_finger_limit =
+			!!(query_buf[0] & RMI_F11_HAS_FINGER_LIMIT);
+		sensor_query->has_linear_coeff_2 =
+			!!(query_buf[0] & RMI_F11_HAS_LINEAR_COEFF);
+
+		query_size++;
 	}
 
-	if (sensor_query->abs_info.has_jitter_filter) {
+	if (sensor_query->has_jitter_filter) {
 		rc = rmi_read_block(rmi_dev, query_base_addr + query_size,
-					&sensor_query->jitter_filter,
-					sizeof(sensor_query->jitter_filter));
+				    query_buf, 1);
 		if (rc < 0)
 			return rc;
-		query_size += sizeof(sensor_query->jitter_filter);
+
+		sensor_query->jitter_window_size = query_buf[0] &
+			RMI_F11_JITTER_WINDOW_MASK;
+		sensor_query->jitter_filter_type = (query_buf[0] &
+			RMI_F11_JITTER_FILTER_MASK) >>
+			RMI_F11_JITTER_FILTER_SHIFT;
+
+		query_size++;
 	}
 
-	if (dev_query->has_query12 && sensor_query->features_2.has_info2) {
+	if (f11->has_query12 && sensor_query->has_info2) {
 		rc = rmi_read_block(rmi_dev, query_base_addr + query_size,
-				    &sensor_query->info_2,
-					sizeof(sensor_query->info_2));
+				    query_buf, 1);
 		if (rc < 0)
 			return rc;
-		query_size += sizeof(sensor_query->info_2);
+
+		sensor_query->light_control =
+			query_buf[0] & RMI_F11_LIGHT_CONTROL_MASK;
+		sensor_query->is_clear =
+			!!(query_buf[0] & RMI_F11_IS_CLEAR);
+		sensor_query->clickpad_props =
+			(query_buf[0] & RMI_F11_CLICKPAD_PROPS_MASK) >>
+			RMI_F11_CLICKPAD_PROPS_SHIFT;
+		sensor_query->mouse_buttons =
+			(query_buf[0] & RMI_F11_MOUSE_BUTTONS_MASK) >>
+			RMI_F11_MOUSE_BUTTONS_SHIFT;
+		sensor_query->has_advanced_gestures =
+			!!(query_buf[0] & RMI_F11_HAS_ADVANCED_GESTURES);
+
+		query_size++;
 	}
 
 	return query_size;
@@ -798,10 +641,8 @@ static void f11_set_abs_params(struct rmi_function *fn, int index)
 	struct f11_data *f11 = fn->data;
 	struct f11_2d_sensor *sensor = &f11->sensors[index];
 	struct input_dev *input = sensor->input;
-	int device_x_max =
-		f11->dev_controls.ctrl0_9->sensor_max_x_pos;
-	int device_y_max =
-		f11->dev_controls.ctrl0_9->sensor_max_y_pos;
+	int device_x_max = le16_to_cpu(*(f11->dev_controls.ctrl0_9 + 6));
+	int device_y_max = le16_to_cpu(*(f11->dev_controls.ctrl0_9 + 8));
 	int x_min, x_max, y_min, y_max;
 	unsigned int input_flags;
 
@@ -809,8 +650,8 @@ static void f11_set_abs_params(struct rmi_function *fn, int index)
 	 * as a touchpad in the platform data
 	 */
 	if (sensor->sensor_type == rmi_f11_sensor_touchpad ||
-			(sensor->sens_query.features_2.has_info2 &&
-				!sensor->sens_query.info_2.is_clear))
+			(sensor->sens_query.has_info2 &&
+				!sensor->sens_query.is_clear))
 		input_flags = INPUT_PROP_POINTER;
 	else
 		input_flags = INPUT_PROP_DIRECT;
@@ -859,8 +700,7 @@ static void f11_set_abs_params(struct rmi_function *fn, int index)
 			y_min, y_max, 0, 0);
 	if (!sensor->type_a)
 		input_mt_init_slots(input, sensor->nbr_fingers);
-	if (IS_ENABLED(CONFIG_RMI4_F11_PEN) &&
-			sensor->sens_query.query9.has_pen)
+	if (IS_ENABLED(CONFIG_RMI4_F11_PEN) && sensor->sens_query.has_pen)
 		input_set_abs_params(input, ABS_MT_TOOL_TYPE,
 				     0, MT_TOOL_MAX, 0, 0);
 	else
@@ -880,6 +720,7 @@ static int rmi_f11_initialize(struct rmi_function *fn)
 	int rc;
 	int i;
 	struct rmi_device_platform_data *pdata = to_rmi_platform_data(rmi_dev);
+	u8 buf;
 
 	f11 = devm_kzalloc(&fn->dev, sizeof(struct f11_data), GFP_KERNEL);
 	if (!f11)
@@ -891,31 +732,29 @@ static int rmi_f11_initialize(struct rmi_function *fn)
 	query_base_addr = fn->fd.query_base_addr;
 	control_base_addr = fn->fd.control_base_addr;
 
-	rc = rmi_read(rmi_dev, query_base_addr, &f11->dev_query);
+	rc = rmi_read(rmi_dev, query_base_addr, &buf);
 	if (rc < 0)
 		return rc;
 
+	f11->nr_sensors = buf & RMI_F11_NR_SENSORS_MASK;
+	f11->has_query9 = !!(buf & RMI_F11_HAS_QUERY9);
+	f11->has_query11 = !!(buf & RMI_F11_HAS_QUERY11);
+	f11->has_query12 = !!(buf & RMI_F11_HAS_QUERY12);
+	f11->has_query27 = !!(buf & RMI_F11_HAS_QUERY27);
+	f11->has_query28 = !!(buf & RMI_F11_HAS_QUERY28);
+
 	query_offset = (query_base_addr + 1);
 	/* Increase with one since number of sensors is zero based */
-	for (i = 0; i < (f11->dev_query.nbr_of_sensors + 1); i++) {
+	for (i = 0; i < (f11->nr_sensors + 1); i++) {
 		struct f11_2d_sensor *sensor = &f11->sensors[i];
 		sensor->sensor_index = i;
 		sensor->fn = fn;
 
-		rc = rmi_f11_get_query_parameters(rmi_dev, &f11->dev_query,
+		rc = rmi_f11_get_query_parameters(rmi_dev, f11,
 				&sensor->sens_query, query_offset);
 		if (rc < 0)
 			return rc;
 		query_offset += rc;
-
-		rc = f11_allocate_control_regs(fn,
-				&f11->dev_query, &sensor->sens_query,
-				&f11->dev_controls, control_base_addr);
-		if (rc < 0) {
-			dev_err(&fn->dev,
-				"Failed to allocate F11 control params.\n");
-			return rc;
-		}
 
 		rc = f11_read_control_regs(fn, &f11->dev_controls,
 				control_base_addr);
@@ -961,12 +800,10 @@ static int rmi_f11_initialize(struct rmi_function *fn)
 
 		ctrl = &f11->dev_controls;
 		if (sensor->axis_align.delta_x_threshold) {
-			ctrl->ctrl0_9->delta_x_threshold =
+			ctrl->ctrl0_9[RMI_F11_DELTA_X_THRESHOLD] =
 				sensor->axis_align.delta_x_threshold;
-			rc = rmi_write_block(rmi_dev,
-					ctrl->ctrl0_9_address,
-					ctrl->ctrl0_9,
-					sizeof(*ctrl->ctrl0_9));
+			rc = rmi_write_block(rmi_dev, ctrl->ctrl0_9_address,
+					     ctrl->ctrl0_9, 10);
 			if (rc < 0)
 				dev_warn(&fn->dev, "Failed to write to delta_x_threshold %d. Code: %d.\n",
 					i, rc);
@@ -974,12 +811,10 @@ static int rmi_f11_initialize(struct rmi_function *fn)
 		}
 
 		if (sensor->axis_align.delta_y_threshold) {
-			ctrl->ctrl0_9->delta_y_threshold =
+			ctrl->ctrl0_9[RMI_F11_DELTA_Y_THRESHOLD] =
 				sensor->axis_align.delta_y_threshold;
-			rc = rmi_write_block(rmi_dev,
-					ctrl->ctrl0_9_address,
-					ctrl->ctrl0_9,
-					sizeof(*ctrl->ctrl0_9));
+			rc = rmi_write_block(rmi_dev, ctrl->ctrl0_9_address,
+					ctrl->ctrl0_9, 10);
 			if (rc < 0)
 				dev_warn(&fn->dev, "Failed to write to delta_y_threshold %d. Code: %d.\n",
 					i, rc);
@@ -994,7 +829,7 @@ static void register_virtual_buttons(struct rmi_function *fn,
 				     struct f11_2d_sensor *sensor) {
 	int j;
 
-	if (!sensor->sens_query.info.has_gestures)
+	if (!sensor->sens_query.has_gestures)
 		return;
 	if (!sensor->virtual_buttons.buttons) {
 		dev_warn(&fn->dev, "No virtual button platform data for 2D sensor %d.\n",
@@ -1038,7 +873,7 @@ static int rmi_f11_register_devices(struct rmi_function *fn)
 	board = driver_data->board;
 	version = driver_data->rev;
 
-	for (i = 0; i < (f11->dev_query.nbr_of_sensors + 1); i++) {
+	for (i = 0; i < (f11->nr_sensors + 1); i++) {
 		struct f11_2d_sensor *sensor = &f11->sensors[i];
 		sensors_itertd = i;
 		input_dev = input_allocate_device();
@@ -1069,7 +904,7 @@ static int rmi_f11_register_devices(struct rmi_function *fn)
 
 		f11_set_abs_params(fn, i);
 
-		if (sensor->sens_query.info.has_rel) {
+		if (sensor->sens_query.has_rel) {
 			set_bit(EV_REL, input_dev->evbit);
 			set_bit(REL_X, input_dev->relbit);
 			set_bit(REL_Y, input_dev->relbit);
@@ -1084,7 +919,7 @@ static int rmi_f11_register_devices(struct rmi_function *fn)
 		if (IS_ENABLED(CONFIG_RMI4_VIRTUAL_BUTTON))
 			register_virtual_buttons(fn, sensor);
 
-		if (sensor->sens_query.info.has_rel) {
+		if (sensor->sens_query.has_rel) {
 			/*create input device for mouse events  */
 			input_dev_mouse = input_allocate_device();
 			if (!input_dev_mouse) {
@@ -1151,7 +986,7 @@ static void rmi_f11_free_devices(struct rmi_function *fn)
 	struct f11_data *f11 = fn->data;
 	int i;
 
-	for (i = 0; i < (f11->dev_query.nbr_of_sensors + 1); i++) {
+	for (i = 0; i < (f11->nr_sensors + 1); i++) {
 		if (f11->sensors[i].input)
 			input_unregister_device(f11->sensors[i].input);
 		if (f11->sensors[i].mouse_input)
@@ -1165,7 +1000,7 @@ static int rmi_f11_config(struct rmi_function *fn)
 	int i;
 	int rc;
 
-	for (i = 0; i < (f11->dev_query.nbr_of_sensors + 1); i++) {
+	for (i = 0; i < (f11->nr_sensors + 1); i++) {
 		rc = f11_write_control_regs(fn, &f11->sensors[i].sens_query,
 				&f11->dev_controls, fn->fd.query_base_addr);
 		if (rc < 0)
@@ -1175,7 +1010,8 @@ static int rmi_f11_config(struct rmi_function *fn)
 	return 0;
 }
 
-int rmi_f11_attention(struct rmi_function *fn, unsigned long *irq_bits)
+int rmi_f11_attention(struct rmi_function *fn,
+						unsigned long *irq_bits)
 {
 	struct rmi_device *rmi_dev = fn->rmi_dev;
 	struct f11_data *f11 = fn->data;
@@ -1186,7 +1022,7 @@ int rmi_f11_attention(struct rmi_function *fn, unsigned long *irq_bits)
 
 	f11->report_count++;
 
-	for (i = 0; i < f11->dev_query.nbr_of_sensors + 1; i++) {
+	for (i = 0; i < f11->nr_sensors + 1; i++) {
 		error = rmi_read_block(rmi_dev,
 				data_base_addr + data_base_addr_offset,
 				f11->sensors[i].data_pkt,
@@ -1208,10 +1044,6 @@ static int rmi_f11_resume(struct device *dev)
 	struct rmi_function *fn = to_rmi_function(dev);
 	struct rmi_device *rmi_dev = fn->rmi_dev;
 	struct f11_data *data = fn->data;
-	/* Command register always reads as 0, so we can just use a local. */
-	struct f11_2d_commands commands = {
-		.rezero = true,
-	};
 	int retval = 0;
 
 	dev_dbg(&fn->dev, "Resuming...\n");
@@ -1220,8 +1052,7 @@ static int rmi_f11_resume(struct device *dev)
 
 	mdelay(data->rezero_wait_ms);
 
-	retval = rmi_write_block(rmi_dev, fn->fd.command_base_addr,
-			&commands, sizeof(commands));
+	retval = rmi_write(rmi_dev, fn->fd.command_base_addr, RMI_F11_REZERO);
 	if (retval < 0) {
 		dev_err(&fn->dev, "%s: failed to issue rezero command, error = %d.",
 			__func__, retval);

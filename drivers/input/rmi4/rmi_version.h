@@ -3,7 +3,7 @@
 
 #define RMI_VERSION_MAJOR 1
 #define RMI_VERSION_MINOR 8
-#define RMI_VERSION_SUBMINOR 3
+#define RMI_VERSION_SUBMINOR 4
 
 #define RMI_VERSION_BRANCH development
 #define RMI_EXTRA_NUMBER 0
