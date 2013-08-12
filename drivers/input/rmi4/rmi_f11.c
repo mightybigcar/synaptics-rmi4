@@ -703,7 +703,7 @@ static void f11_set_abs_params(struct rmi_function *fn, int index)
 	/* We assume touchscreen unless demonstrably a touchpad or specified
 	 * as a touchpad in the platform data
 	 */
-	if (sensor->sensor_type == rmi_f11_sensor_touchpad ||
+	if (sensor->sensor_type == rmi_sensor_touchpad ||
 			(sensor->sens_query.has_info2 &&
 				!sensor->sens_query.is_clear))
 		input_flags = INPUT_PROP_POINTER;
@@ -1080,7 +1080,7 @@ static void rmi_f11_free_devices(struct rmi_function *fn)
 	struct rmi_device_platform_data *pdata = to_rmi_platform_data(fn->rmi_dev);
 	int i;
 	if (!pdata->unified_input_device) {
-		for (i = 0; i < (f11->dev_query.nbr_of_sensors + 1); i++) {
+		for (i = 0; i < (f11->nr_sensors + 1); i++) {
 			if (f11->sensors[i].input)
 				input_unregister_device(f11->sensors[i].input);
 			if (f11->sensors[i].mouse_input)

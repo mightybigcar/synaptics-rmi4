@@ -795,7 +795,7 @@ static ssize_t f11_suppress_store(struct device *dev,
         if (suppress > 1)
                 return -EINVAL;
 
-        for (i = 0; i < (data->dev_query.nbr_of_sensors + 1); i++)
+        for (i = 0; i < (data->nr_sensors + 1); i++)
                 data->sensors[i].suppress = suppress;
 
         return count;
@@ -842,7 +842,7 @@ static ssize_t f11_suppress_highw_store(struct device *dev,
         if (suppress_highw > 15)
                 return -EINVAL;
 
-        for (i = 0; i < (data->dev_query.nbr_of_sensors + 1); i++)
+        for (i = 0; i < (data->nr_sensors + 1); i++)
                 data->sensors[i].suppress_highw = suppress_highw;
 
         return count;

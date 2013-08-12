@@ -168,7 +168,7 @@ static int enable_sensor(struct rmi_device *rmi_dev)
 	data->enabled = true;
 
 	if (rmi_transport->info.proto_type != RMI_PROTOCOL_HID
-		pdata->attn_gpio && !pdata->level_triggered
+		&& pdata->attn_gpio && !pdata->level_triggered
 		&& gpio_get_value(pdata->attn_gpio) == pdata->attn_polarity)
 		retval = process_interrupt_requests(rmi_dev);
 
