@@ -249,6 +249,8 @@ struct rmi_device {
 	struct rmi_transport_device *xport;
 
 	struct dentry *debugfs_root;
+	int    interrupt_restore_block_flag;
+
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	struct early_suspend early_suspend_handler;

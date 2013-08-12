@@ -169,8 +169,8 @@ static ssize_t delta_threshold_read(struct file *filp, char __user *buffer,
 	data->done = 1;
 
 	retval = snprintf(local_buf, size, "%u %u\n",
-			ctrl->ctrl0_9->delta_x_threshold,
-			ctrl->ctrl0_9->delta_y_threshold);
+			ctrl->ctrl0_9[RMI_F11_DELTA_X_THRESHOLD],
+			ctrl->ctrl0_9[RMI_F11_DELTA_Y_THRESHOLD]);
 
 	if (retval <= 0 || copy_to_user(buffer, local_buf, retval))
 		retval = -EFAULT;
@@ -207,19 +207,18 @@ static ssize_t delta_threshold_write(struct file *filp,
 	if (retval != 2 || new_X > 1 || new_Y > 1)
 		return -EINVAL;
 
-	save_X = ctrl->ctrl0_9->delta_x_threshold;
-	save_Y = ctrl->ctrl0_9->delta_y_threshold;
+	save_X = ctrl->ctrl0_9[RMI_F11_DELTA_X_THRESHOLD];
+	save_Y = ctrl->ctrl0_9[RMI_F11_DELTA_Y_THRESHOLD];
 
-	ctrl->ctrl0_9->delta_x_threshold = new_X;
-	ctrl->ctrl0_9->delta_y_threshold = new_Y;
-	rc = rmi_write_block(rmi_dev, ctrl->ctrl0_9_address,
-			ctrl->ctrl0_9, sizeof(*ctrl->ctrl0_9));
+	ctrl->ctrl0_9[RMI_F11_DELTA_X_THRESHOLD] = new_X;
+	ctrl->ctrl0_9[RMI_F11_DELTA_Y_THRESHOLD] = new_Y;
+	rc = rmi_write_block(rmi_dev, ctrl->ctrl0_9_address, ctrl->ctrl0_9, 10);
 	if (rc < 0) {
 		dev_warn(&data->sensor->fn->dev,
 			"Failed to write to delta_threshold. Code: %d.\n",
 			rc);
-		ctrl->ctrl0_9->delta_x_threshold = save_X;
-		ctrl->ctrl0_9->delta_y_threshold = save_Y;
+		ctrl->ctrl0_9[RMI_F11_DELTA_X_THRESHOLD] = save_X;
+		ctrl->ctrl0_9[RMI_F11_DELTA_Y_THRESHOLD] = save_Y;
 	}
 
 	return size;
@@ -447,7 +446,7 @@ struct f11_debugfs_data {
 	struct rmi_function *fn;
 };
 
-static int f11_open(struct inode *inodep, struct file *filp)
+static int f11_debug_open(struct inode *inodep, struct file *filp)
 {
 	struct f11_debugfs_data *data;
 	struct rmi_function *fn;
@@ -462,7 +461,7 @@ static int f11_open(struct inode *inodep, struct file *filp)
 	return 0;
 }
 
-static int f11_release(struct inode *inodep, struct file *filp)
+static int f11_debug_release(struct inode *inodep, struct file *filp)
 {
 	kfree(filp->private_data);
 	return 0;
@@ -535,10 +534,181 @@ static ssize_t report_count_read(struct file *filp, char __user *buffer, size_t 
 
 static const struct file_operations report_count_fops = {
 	.owner = THIS_MODULE,
-	.open = f11_open,
-	.release = f11_release,
+	.open = f11_debug_open,
+	.release = f11_debug_release,
 	.llseek = debug_seek,
 	.read = report_count_read,
+};
+
+static ssize_t query_write(struct file *filp,
+			   const char __user *buffer, size_t size, loff_t *offset) {
+	char buf[size];
+	unsigned int query;
+	int retval;
+	struct f11_debugfs_data *data = filp->private_data;
+	struct f11_data *f11 = data->fn->data;
+	struct device *dev = &data->fn->dev;
+	struct f11_2d_sensor_queries *props = &f11->sensors[0].sens_query;
+
+	retval = copy_from_user(buf, buffer, size);
+	if (retval)
+		return -EFAULT;
+
+	if (sscanf(buf, "%u", &query) != 1)
+		return -EINVAL;
+
+	dev_dbg(&data->fn->dev, "QUERY %d\n", query);
+	switch (query) {
+	case 0:
+		dev_dbg(dev, "Nr sensors: %d\n", f11->nr_sensors);
+		dev_dbg(dev, "has_query9? %d\n", f11->has_query9);
+		dev_dbg(dev, "has_query11? %d\n", f11->has_query11);
+		dev_dbg(dev, "has_query12? %d\n", f11->has_query12);
+		dev_dbg(dev, "has_query27? %d\n", f11->has_query27);
+		dev_dbg(dev, "has_query28? %d\n", f11->has_query28);
+		break;
+	case 1:
+		dev_dbg(dev, "Nr fingers: %d\n", props->nr_fingers);
+		dev_dbg(dev, "has_rel? %d\n", props->has_rel);
+		dev_dbg(dev, "has_abs? %d\n", props->has_abs);
+		dev_dbg(dev, "has_gestures? %d\n", props->has_gestures);
+		dev_dbg(dev, "has_sensitivity_adjust? %d\n", props->has_sensitivity_adjust);
+		dev_dbg(dev, "configurable? %d\n", props->configurable);
+		break;
+	case 2:
+		dev_dbg(dev, "Nr X electrodes: %d\n", props->nr_x_electrodes);
+		break;
+	case 3:
+		dev_dbg(dev, "Nr Y electrodes: %d\n", props->nr_y_electrodes);
+		break;
+	case 4:
+		dev_dbg(dev, "Max electrodes: %d\n", props->max_electrodes);
+		break;
+	case 5:
+		dev_dbg(dev, "Abs data size: %d\n", props->abs_data_size);
+		dev_dbg(dev, "has_anchored_finger? %d\n", props->has_anchored_finger);
+		dev_dbg(dev, "has_adj_hyst? %d\n", props->has_adj_hyst);
+		dev_dbg(dev, "has_dribble? %d\n", props->has_dribble);
+		dev_dbg(dev, "has_bending_correction? %d\n", props->has_bending_correction);
+		dev_dbg(dev, "has_large_object_suppression? %d\n", props->has_large_object_suppression);
+		dev_dbg(dev, "has_jitter_filter? %d\n", props->has_jitter_filter);
+		break;
+	case 6:
+		dev_dbg(dev, "Query 6 register: %#04x\n", props->f11_2d_query6);
+		break;
+	case 7:
+		if (props->has_gestures) {
+			dev_dbg(dev, "has_single_tap? %d\n", props->has_single_tap);
+			dev_dbg(dev, "has_tap_n_hold? %d\n", props->has_tap_n_hold);
+			dev_dbg(dev, "has_double_tap? %d\n", props->has_double_tap);
+			dev_dbg(dev, "has_early_tap? %d\n", props->has_early_tap);
+			dev_dbg(dev, "has_flick? %d\n", props->has_flick);
+			dev_dbg(dev, "has_press? %d\n", props->has_press);
+			dev_dbg(dev, "has_pinch? %d\n", props->has_pinch);
+			dev_dbg(dev, "has_chiral? %d\n", props->has_chiral);
+		} else
+			dev_dbg(dev, "Not present.\n");
+		break;
+	case 8:
+		if (props->has_gestures) {
+			dev_dbg(dev, "has_palm_det? %d\n", props->has_palm_det);
+			dev_dbg(dev, "has_rotate? %d\n", props->has_rotate);
+			dev_dbg(dev, "has_touch_shapes? %d\n", props->has_touch_shapes);
+			dev_dbg(dev, "has_scroll_zones? %d\n", props->has_scroll_zones);
+			dev_dbg(dev, "has_individual_scroll_zones? %d\n", props->has_individual_scroll_zones);
+			dev_dbg(dev, "has_mf_scroll? %d\n", props->has_mf_scroll);
+			dev_dbg(dev, "has_mf_edge_motion? %d\n", props->has_mf_edge_motion);
+			dev_dbg(dev, "has_mf_scroll_inertia? %d\n", props->has_mf_scroll_inertia);
+		} else
+			dev_dbg(dev, "Not present.\n");
+		break;
+	case 9:
+		if (f11->has_query9) {
+			dev_dbg(dev, "has_pen? %d\n", props->has_pen);
+			dev_dbg(dev, "has_proximity? %d\n", props->has_proximity);
+			dev_dbg(dev, "has_palm_det_sensitivity? %d\n", props->has_palm_det_sensitivity);
+			dev_dbg(dev, "has_suppress_on_palm_detect? %d\n", props->has_suppress_on_palm_detect);
+			dev_dbg(dev, "has_two_pen_thresholds? %d\n", props->has_two_pen_thresholds);
+			dev_dbg(dev, "has_contact_geometry? %d\n", props->has_contact_geometry);
+			dev_dbg(dev, "has_pen_hover_discrimination? %d\n", props->has_pen_hover_discrimination);
+			dev_dbg(dev, "has_pen_filters? %d\n", props->has_pen_filters);
+		} else
+			dev_dbg(dev, "Not present.\n");
+		break;
+	case 10:
+		if (props->has_touch_shapes)
+			dev_dbg(dev, "Nr touch shapes: %d\n", props->nr_touch_shapes);
+		else
+			dev_dbg(dev, "Not present.\n");
+		break;
+	case 11:
+		if (f11->has_query11) {
+			dev_dbg(dev, "has_z_tuning? %d\n", props->has_z_tuning);
+			dev_dbg(dev, "has_algorithm_selection? %d\n", props->has_algorithm_selection);
+			dev_dbg(dev, "has_w_tuning? %d\n", props->has_w_tuning);
+			dev_dbg(dev, "has_pitch_info? %d\n", props->has_pitch_info);
+			dev_dbg(dev, "has_finger_size? %d\n", props->has_finger_size);
+			dev_dbg(dev, "has_segmentation_aggressiveness? %d\n", props->has_segmentation_aggressiveness);
+			dev_dbg(dev, "has_XY_clip? %d\n", props->has_XY_clip);
+			dev_dbg(dev, "has_drumming_filter? %d\n", props->has_drumming_filter);
+		} else
+			dev_dbg(dev, "Not present.\n");
+		break;
+	case 12:
+		if (f11->has_query12) {
+			dev_dbg(dev, "has_gapless_finger? %d\n", props->has_gapless_finger);
+			dev_dbg(dev, "has_gapless_finger_tuning? %d\n", props->has_gapless_finger_tuning);
+			dev_dbg(dev, "has_8bit_w? %d\n", props->has_8bit_w);
+			dev_dbg(dev, "has_adjustable_mapping? %d\n", props->has_adjustable_mapping);
+			dev_dbg(dev, "has_info2? %d\n", props->has_info2);
+			dev_dbg(dev, "has_physical_props? %d\n", props->has_physical_props);
+			dev_dbg(dev, "has_finger_limit? %d\n", props->has_finger_limit);
+			dev_dbg(dev, "has_linear_coeff_2? %d\n", props->has_linear_coeff_2);
+		} else
+			dev_dbg(dev, "Not present.\n");
+		break;
+	case 13:
+		if (props->has_jitter_filter) {
+			dev_dbg(dev, "jitter_filter_type: %d\n", props->jitter_filter_type);
+			dev_dbg(dev, "jitter_filter_type: %d\n", props->jitter_filter_type);
+		} else
+			dev_dbg(dev, "Not present.\n");
+		break;
+	case 14:
+		if (props->has_info2) {
+			dev_dbg(dev, "light_control: %d\n", props->light_control);
+			dev_dbg(dev, "is_clear? %d\n", props->is_clear);
+			dev_dbg(dev, "clickpad_props: %d\n", props->clickpad_props);
+			dev_dbg(dev, "mouse_buttons: %d\n", props->mouse_buttons);
+			dev_dbg(dev, "has_advanced_gestures? %d\n", props->has_advanced_gestures);
+		} else
+			dev_dbg(dev, "Not present.\n");
+		break;
+	case 27:
+		if (f11->has_query27) {
+			// TBD
+		} else
+			dev_dbg(dev, "Not present.\n");
+		break;
+	case 28:
+		if (f11->has_query28) {
+			// TBD
+		} else
+			dev_dbg(dev, "Not present.\n");
+		break;
+	default:
+		dev_dbg(&data->fn->dev, "Unknown or invalid query.\n");
+		return -EINVAL;
+	}
+
+	return size;
+}
+
+static const struct file_operations query_fops = {
+	.owner = THIS_MODULE,
+	.open = f11_debug_open,
+	.release = f11_debug_release,
+	.write = query_write,
 };
 
 static int rmi_f11_setup_debugfs(struct f11_ctl_data *ctl_data)
@@ -559,6 +729,11 @@ static int rmi_f11_setup_debugfs(struct f11_ctl_data *ctl_data)
 				fn->debugfs_root, fn, &report_count_fops);
 	if (!entry || IS_ERR(entry))
 		dev_warn(&fn->dev, "Failed to create debugfs report_count.\n");
+
+	entry = debugfs_create_file("query", RMI_RO_ATTR,
+				    fn->debugfs_root, fn, &query_fops);
+	if (!entry || IS_ERR(entry))
+		dev_warn(&fn->dev, "Failed to create debugfs query.\n");
 
 	return 0;
 }
@@ -586,14 +761,8 @@ static ssize_t f11_rezero_store(struct device *dev,
 
 	/* Per spec, 0 has no effect, so we skip it entirely. */
 	if (rezero) {
-		/* Command register always reads as 0, so just use a local. */
-		struct f11_2d_commands commands = {
-			.rezero = true,
-		};
-
-		retval = rmi_write_block(fn->rmi_dev,
-					fn->fd.command_base_addr,
-					&commands, sizeof(commands));
+		retval = rmi_write(fn->rmi_dev, fn->fd.command_base_addr,
+				   RMI_F11_REZERO);
 		if (retval < 0) {
 			dev_err(dev, "%s: failed to issue rezero command, error = %d.",
 				__func__, retval);
@@ -732,12 +901,11 @@ static int f11_ctl_cleanup(struct rmi_control_handler_data *hdata)
 
 static struct rmi_control_handler_data *f11_ctl_attach(struct device *dev, void *data)
 {
-	struct rmi_function *fn;
-	struct f11_data *f11_data;
+	struct rmi_function *fn = to_rmi_function(dev);
+	struct f11_data *f11 = fn->data;
 	struct f11_ctl_data *ctl_data;
 	int i;
 
-	fn = to_rmi_function(dev);
 	dev_dbg(dev, "%s called.\n", __func__);
 
 	ctl_data = devm_kzalloc(dev, sizeof(struct f11_ctl_data), GFP_KERNEL);
@@ -745,10 +913,9 @@ static struct rmi_control_handler_data *f11_ctl_attach(struct device *dev, void 
 		return NULL;
 	ctl_data->f11_dev = fn;
 
-	f11_data = fn->data;
 	/* Increase with one since number of sensors is zero based */
-	for (i = 0; i < (f11_data->dev_query.nbr_of_sensors + 1); i++) {
-		ctl_data->sensor_data[i].sensor = &f11_data->sensors[i];
+	for (i = 0; i < (f11->nr_sensors + 1); i++) {
+		ctl_data->sensor_data[i].sensor = &f11->sensors[i];
 		rmi_f11_setup_sensor_debugfs(&ctl_data->sensor_data[i]);
 	}
 

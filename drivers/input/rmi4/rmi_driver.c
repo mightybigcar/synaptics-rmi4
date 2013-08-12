@@ -168,8 +168,8 @@ static int enable_sensor(struct rmi_device *rmi_dev)
 	data->enabled = true;
 
 	if (rmi_transport->info.proto_type != RMI_PROTOCOL_HID
-		&& !pdata->level_triggered &&
-		    gpio_get_value(pdata->attn_gpio) == pdata->attn_polarity)
+		pdata->attn_gpio && !pdata->level_triggered
+		&& gpio_get_value(pdata->attn_gpio) == pdata->attn_polarity)
 		retval = process_interrupt_requests(rmi_dev);
 
 	return retval;
@@ -974,8 +974,7 @@ static int rmi_driver_remove(struct rmi_device *rmi_dev)
 		input_unregister_device(data->input);
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
-	if (IS_ENABLED(CONFIG_HAS_EARLYSUSPEND))
-		unregister_early_suspend(&rmi_dev->early_suspend_handler);
+	unregister_early_suspend(&rmi_dev->early_suspend_handler);
 #endif
 
 	rmi_free_function_list(rmi_dev);
@@ -1191,15 +1190,13 @@ static int rmi_driver_probe(struct device *dev)
 		mutex_init(&data->suspend_mutex);
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
-		if (IS_ENABLED(CONFIG_HAS_EARLYSUSPEND)) {
-			rmi_dev->early_suspend_handler.level =
-				EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1;
-			rmi_dev->early_suspend_handler.suspend =
-						rmi_driver_early_suspend;
-			rmi_dev->early_suspend_handler.resume =
-						rmi_driver_late_resume;
-			register_early_suspend(&rmi_dev->early_suspend_handler);
-		}
+		rmi_dev->early_suspend_handler.level =
+			EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1;
+		rmi_dev->early_suspend_handler.suspend =
+					rmi_driver_early_suspend;
+		rmi_dev->early_suspend_handler.resume =
+					rmi_driver_late_resume;
+		register_early_suspend(&rmi_dev->early_suspend_handler);
 #endif
 	}
 

@@ -110,14 +110,14 @@ int rmi_register_transport_device(struct rmi_transport_device *xport)
 
 	xport->rmi_dev = rmi_dev;
 
+	rmi_physical_setup_debugfs(rmi_dev);
+
 	error = device_register(&rmi_dev->dev);
 	if (error)
 		return error;
 
 	dev_dbg(xport->dev, "%s: Registered %s as %s.\n", __func__,
 		pdata->sensor_name, dev_name(&rmi_dev->dev));
-
-	rmi_physical_setup_debugfs(rmi_dev);
 
 	return 0;
 }
