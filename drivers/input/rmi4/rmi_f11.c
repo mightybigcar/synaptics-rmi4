@@ -742,12 +742,6 @@ static void f11_set_abs_params(struct rmi_function *fn, int index)
 	input_set_abs_params(input, ABS_Y, y_min, y_max, 0, 0);
 	input_set_abs_params(input, ABS_PRESSURE, 0, DEFAULT_MAX_ABS_MT_PRESSURE, 0, 0);
 
-	res_x = (x_max - x_min) / sensor->x_mm;
-	res_y = (y_max - y_min) / sensor->y_mm;
-
-	input_abs_set_res(input, ABS_X, res_x);
-	input_abs_set_res(input, ABS_Y, res_y);
-
 	input_set_abs_params(input, ABS_MT_PRESSURE, 0,
 			DEFAULT_MAX_ABS_MT_PRESSURE, 0, 0);
 	input_set_abs_params(input, ABS_MT_TOUCH_MAJOR,
@@ -764,8 +758,18 @@ static void f11_set_abs_params(struct rmi_function *fn, int index)
 			x_min, x_max, 0, 0);
 	input_set_abs_params(input, ABS_MT_POSITION_Y,
 			y_min, y_max, 0, 0);
-	input_abs_set_res(input, ABS_MT_POSITION_X, res_x);
-	input_abs_set_res(input, ABS_MT_POSITION_Y, res_y);
+
+	if (sensor->x_mm && sensor->y_mm) {
+		res_x = (x_max - x_min) / sensor->x_mm;
+		res_y = (y_max - y_min) / sensor->y_mm;
+
+		input_abs_set_res(input, ABS_X, res_x);
+		input_abs_set_res(input, ABS_Y, res_y);
+
+		input_abs_set_res(input, ABS_MT_POSITION_X, res_x);
+		input_abs_set_res(input, ABS_MT_POSITION_Y, res_y);
+	}
+
 	if (!sensor->type_a)
 		input_mt_init_slots(input, sensor->nbr_fingers, 0);
 	if (IS_ENABLED(CONFIG_RMI4_F11_PEN) && sensor->sens_query.has_pen)

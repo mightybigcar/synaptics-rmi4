@@ -492,12 +492,6 @@ static int rmi_f12_probe(struct rmi_function *fn)
 	input_set_abs_params(input_dev, ABS_Y, 0, f12->y_max, 0, 0);
 	input_set_abs_params(input_dev, ABS_PRESSURE, 0, DEFAULT_MAX_ABS_MT_PRESSURE, 0, 0);
 
-	res_x = (f12->x_max - 0) / pdata->f12_sensor_data->x_mm;
-	res_y = (f12->y_max - 0) / pdata->f12_sensor_data->y_mm;
-
-	input_abs_set_res(input_dev, ABS_X, res_x);
-	input_abs_set_res(input_dev, ABS_Y, res_y);
-
 	input_set_abs_params(input_dev, ABS_MT_POSITION_X,
 			0, f12->x_max, 0, 0);
 	input_set_abs_params(input_dev, ABS_MT_POSITION_Y,
@@ -513,8 +507,18 @@ static int rmi_f12_probe(struct rmi_function *fn)
 	input_set_abs_params(input_dev, ABS_MT_TRACKING_ID,
 			DEFAULT_MIN_ABS_MT_TRACKING_ID,
 			f12->max_objects, 0, 0);
-	input_abs_set_res(input_dev, ABS_MT_POSITION_X, res_x);
-	input_abs_set_res(input_dev, ABS_MT_POSITION_Y, res_y);
+
+	if (pdata->f12_sensor_data->x_mm && pdata->f12_sensor_data->y_mm) {
+		res_x = (f12->x_max - 0) / pdata->f12_sensor_data->x_mm;
+		res_y = (f12->y_max - 0) / pdata->f12_sensor_data->y_mm;
+
+		input_abs_set_res(input_dev, ABS_X, res_x);
+		input_abs_set_res(input_dev, ABS_Y, res_y);
+
+		input_abs_set_res(input_dev, ABS_MT_POSITION_X, res_x);
+		input_abs_set_res(input_dev, ABS_MT_POSITION_Y, res_y);
+	}
+
 	//input_set_abs_params(input_dev, ABS_MT_TOOL_TYPE,
 	//			0, MT_TOOL_MAX, 0, 0);
 	input_set_abs_params(input_dev, ABS_MT_TOOL_TYPE,
