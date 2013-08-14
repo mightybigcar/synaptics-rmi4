@@ -164,7 +164,7 @@ static int rmi_f11_abs_pos_report(struct f11_2d_sensor *sensor,
 			abs->y =  min(axis_align->clip_Y_high, abs->y);
 
 #if 0
-		dev_dbg(&sensor->fn_dev->dev,
+		dev_dbg(&sensor->fn->dev,
 			"finger[%d]:%d - x:%d y:%d z:%d w_max:%d w_min:%d\n",
 			n_finger, finger_state, abs->x, abs->y, abs->z, abs->w_max, abs->w_min);
 #endif
@@ -694,8 +694,10 @@ static void f11_set_abs_params(struct rmi_function *fn, int index)
 	struct f11_data *f11 = fn->data;
 	struct f11_2d_sensor *sensor = &f11->sensors[index];
 	struct input_dev *input = sensor->input;
-	int device_x_max = le16_to_cpu(*(f11->dev_controls.ctrl0_9 + 6));
-	int device_y_max = le16_to_cpu(*(f11->dev_controls.ctrl0_9 + 8));
+	int device_x_max = le16_to_cpu(*(f11->dev_controls.ctrl0_9 + 6) |
+				((*(f11->dev_controls.ctrl0_9 + 7) & 0x0F) << 8));
+	int device_y_max = le16_to_cpu(*(f11->dev_controls.ctrl0_9 + 8) |
+				((*(f11->dev_controls.ctrl0_9 + 9) & 0x0F) << 8));
 	int x_min, x_max, y_min, y_max;
 	unsigned int input_flags;
 	int res_x, res_y;
