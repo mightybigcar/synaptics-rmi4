@@ -42,8 +42,10 @@ Files in the tarball are:
           Board file for Nexus 4, for reference.
       arch/arm/configs/mako_defconfig
           Kernel config file for Nexus 4, for reference.
-     include/linux/input.h
-          Example of BUS_RMI definition.
+      include/linux/input.h
+          Example of BUS_RMI definition (pre v3.8).
+      include/uapi/linux/input.h
+          Example of BUS_RMI definition (newer kernels moved the BUS_* definitions, post v3.8).
 
 
 To apply the new driver codebase to your current system, please follow
