@@ -72,20 +72,238 @@ static void get_board_and_rev(struct rmi_function *fn,
 #define PACKAGE_ID_BYTES 4
 #define BUILD_ID_BYTES 3
 
+int read_f01_properties(struct rmi_function *fn, struct rmi_device *rmi_dev,
+			struct f01_basic_properties *props, u16 query_addr,
+			struct device *dev)
+{
+	int i;
+	int error;
+	u16 prod_info_addr;
+	u8 info_buf[PACKAGE_ID_BYTES];
+	struct rmi_driver_data *driver_data = dev_get_drvdata(&rmi_dev->dev);
+	struct f01_data *data = NULL;
+	u8 basic_query[RMI_F01_BASIC_QUERY_LEN];
+
+	/* read queries */
+	error = rmi_read_block(rmi_dev, query_addr,
+				basic_query, sizeof(basic_query));
+	if (error < 0) {
+		dev_err(dev, "Failed to read device query registers.\n");
+		return error;
+	}
+
+	/* Now parse what we got */
+	props->manufacturer_id = basic_query[0];
+
+	props->has_lts = basic_query[1] & RMI_F01_QRY1_HAS_LTS;
+	props->has_sensor_id =
+			!!(basic_query[1] & RMI_F01_QRY1_HAS_SENSOR_ID);
+	props->has_adjustable_doze =
+			basic_query[1] & RMI_F01_QRY1_HAS_ADJ_DOZE;
+	props->has_adjustable_doze_holdoff =
+			basic_query[1] & RMI_F01_QRY1_HAS_ADJ_DOZE_HOFF;
+	props->has_query42 = basic_query[1] & RMI_F01_QRY1_HAS_PROPS_2;
+
+	props->productinfo = (((basic_query[2] & RMI_F01_QRY2_PRODINFO_MASK) << 8)
+				| (basic_query[3] & RMI_F01_QRY2_PRODINFO_MASK));
+
+	snprintf(props->dom, sizeof(props->dom),
+		"20%02d/%02d/%02d",
+		basic_query[5] & RMI_F01_QRY5_YEAR_MASK,
+		basic_query[6] & RMI_F01_QRY6_MONTH_MASK,
+		basic_query[7] & RMI_F01_QRY7_DAY_MASK);
+
+	memcpy(props->product_id, &basic_query[11], RMI_PRODUCT_ID_LENGTH);
+	props->product_id[RMI_PRODUCT_ID_LENGTH] = '\0';
+	query_addr += 11;
+
+	if (fn != NULL) {
+		data = fn->data;
+		error = rmi_read_block(rmi_dev, query_addr, data->product_id,
+					RMI_PRODUCT_ID_LENGTH);
+		if (error < 0) {
+			dev_err(dev, "Failed to read product ID.\n");
+			return error;
+		}
+		data->product_id[RMI_PRODUCT_ID_LENGTH] = '\0';
+		get_board_and_rev(fn, driver_data);
+		dev_info(&fn->dev, "found RMI device, manufacturer: %s, product: %s, date: %s\n",
+		 	props->manufacturer_id == 1 ?
+		 	"synaptics" : "unknown", data->product_id, props->dom);
+	}
+
+	/* We'll come back and use this later, depending on some other query
+	 * bits.
+	 */
+	prod_info_addr = query_addr + 6;
+
+	query_addr += RMI_PRODUCT_ID_LENGTH;
+	if (props->has_lts) {
+		error = rmi_read_block(rmi_dev, query_addr, info_buf, 1);
+		if (error < 0) {
+			dev_err(dev, "Failed to read LTS info.\n");
+			return error;
+		}
+		props->slave_asic_rows = info_buf[0] & RMI_F01_QRY21_SLAVE_ROWS_MASK;
+		props->slave_asic_columns = (info_buf[1] & RMI_F01_QRY21_SLAVE_COLUMNS_MASK) >> 3;
+		query_addr++;
+	}
+
+	if (props->has_sensor_id) {
+		error = rmi_read_block(rmi_dev, query_addr, &props->sensor_id, 1);
+		if (error < 0) {
+			dev_err(dev, "Failed to read sensor ID.\n");
+			return error;
+		}
+		query_addr++;
+	}
+
+	/* Maybe skip a block of undefined LTS registers. */
+	if (props->has_lts)
+		query_addr += RMI_F01_LTS_RESERVED_SIZE;
+
+	if (props->has_query42) {
+		error = rmi_read_block(rmi_dev, query_addr, info_buf, 1);
+		if (error < 0) {
+			dev_err(dev, "Failed to read additional properties.\n");
+			return error;
+		}
+		props->has_ds4_queries = info_buf[0] & RMI_F01_QRY42_DS4_QUERIES;
+		props->has_multi_physical = info_buf[0] & RMI_F01_QRY42_MULTI_PHYS;
+		props->has_guest = info_buf[0] & RMI_F01_QRY42_GUEST;
+		props->has_swr = info_buf[0] & RMI_F01_QRY42_SWR;
+		props->has_nominal_report_rate = info_buf[0] & RMI_F01_QRY42_NOMINAL_REPORT;
+		props->has_recalibration_interval = info_buf[0] & RMI_F01_QRY42_RECAL_INTERVAL;
+		query_addr++;
+	}
+
+	if (props->has_ds4_queries) {
+		error = rmi_read_block(rmi_dev, query_addr,
+				       &props->ds4_query_length, 1);
+		if (error < 0) {
+			dev_err(dev, "Failed to read DS4 query length size.\n");
+			return error;
+		}
+		query_addr++;
+	}
+
+	for (i = 1; i <= props->ds4_query_length; i++) {
+		u8 val;
+		error = rmi_read_block(rmi_dev, query_addr, &val, 1);
+		query_addr++;
+		if (error < 0) {
+			dev_err(dev, "Failed to read F01_RMI_QUERY43.%02d, code: %d.\n",
+				i, error);
+			continue;
+		}
+		switch (i) {
+		case 1:
+			props->has_package_id_query = val & RMI_F01_QRY43_01_PACKAGE_ID;
+			props->has_build_id_query = val & RMI_F01_QRY43_01_BUILD_ID;
+			props->has_reset_query = val & RMI_F01_QRY43_01_RESET;
+			props->has_maskrev_query = val & RMI_F01_QRY43_01_PACKAGE_ID;
+			break;
+		case 2:
+			props->has_i2c_control = val & RMI_F01_QRY43_02_I2C_CTL;
+			props->has_spi_control = val & RMI_F01_QRY43_02_SPI_CTL;
+			props->has_attn_control = val & RMI_F01_QRY43_02_ATTN_CTL;
+			props->has_win8_vendor_info = val & RMI_F01_QRY43_02_WIN8;
+			props->has_timestamp = val & RMI_F01_QRY43_02_TIMESTAMP;
+			break;
+		case 3:
+			props->has_tool_id_query = val & RMI_F01_QRY43_03_TOOL_ID;
+			props->has_fw_revision_query = val & RMI_F01_QRY43_03_FW_REVISION;
+			break;
+		default:
+			dev_warn(dev, "No handling for F01_RMI_QUERY43.%02d.\n",
+				 i);
+		}
+	}
+
+	/* If present, the ASIC package ID registers are overlaid on the
+	 * product ID. Go back to the right address (saved previously) and
+	 * read them.
+	 */
+	if (props->has_package_id_query && data) {
+		error = rmi_read_block(rmi_dev, prod_info_addr, info_buf,
+				PACKAGE_ID_BYTES);
+		if (error < 0)
+			dev_warn(dev, "Failed to read package ID.\n");
+		else {
+			u16 *val = (u16 *)info_buf;
+			data->package_id = le16_to_cpu(*val);
+			val = (u16 *)(info_buf + 2);
+			data->package_rev = le16_to_cpu(*val);
+		}
+	}
+	prod_info_addr++;
+
+	/* The firmware build id (if present) is similarly overlaid on product
+	 * ID registers.  Go back again and read that data.
+	 */
+	if (props->has_build_id_query && data) {
+		error = rmi_read_block(rmi_dev, prod_info_addr, info_buf,
+				BUILD_ID_BYTES);
+		if (error < 0)
+			dev_warn(dev, "Failed to read FW build ID.\n");
+		else {
+			u16 *val = (u16 *)info_buf;
+			data->build_id = le16_to_cpu(*val);
+			data->build_id += info_buf[2] * 65536;
+			dev_dbg(dev, "FW build ID: %#08x (%u).\n",
+				data->build_id, data->build_id);
+		}
+	}
+
+	if (props->has_reset_query) {
+		u8 val;
+		error = rmi_read_block(rmi_dev, query_addr, &val, 1);
+		query_addr++;
+		if (error < 0)
+			dev_warn(dev, "Failed to read F01_RMI_QUERY44, code: %d.\n",
+				error);
+		else {
+			props->reset_enabled = val & RMI_F01_QRY44_RST_ENABLED;
+			props->reset_polarity = val & RMI_F01_QRY44_RST_POLARITY;
+			props->pullup_enabled = val & RMI_F01_QRY44_PULLUP_ENABLED;
+			props->reset_pin = (val & RMI_F01_QRY44_RST_PIN_MASK) >> 4;
+		}
+	}
+
+	if (props->has_tool_id_query) {
+		error = rmi_read_block(rmi_dev, query_addr, props->tool_id, RMI_TOOL_ID_LENGTH);
+		if (error < 0)
+			dev_warn(dev, "Failed to read F01_RMI_QUERY45, code: %d.\n",
+				 error);
+		/* This is a so-called "packet register", so address map
+		 * increments only by one. */
+		query_addr++;
+		props->tool_id[RMI_TOOL_ID_LENGTH] = '\0';
+	}
+
+	if (props->has_fw_revision_query) {
+		error = rmi_read_block(rmi_dev, query_addr, props->fw_revision, RMI_FW_REVISION_LENGTH);
+		if (error < 0)
+			dev_warn(dev, "Failed to read F01_RMI_QUERY46, code: %d.\n",
+				 error);
+		/* This is a so-called "packet register", so address map
+		 * increments only by one. */
+		query_addr++;
+		props->tool_id[RMI_FW_REVISION_LENGTH] = '\0';
+	}
+
+	return 0;
+}
+
 static int rmi_f01_initialize(struct rmi_function *fn)
 {
 	u8 temp;
-	int i;
 	int error;
-	u16 query_addr = fn->fd.query_base_addr;
-	u16 prod_info_addr;
-	u8 info_buf[4];
 	u16 ctrl_base_addr = fn->fd.control_base_addr;
 	struct rmi_device *rmi_dev = fn->rmi_dev;
 	struct rmi_driver_data *driver_data = dev_get_drvdata(&rmi_dev->dev);
 	struct f01_data *data = fn->data;
 	struct rmi_device_platform_data *pdata = to_rmi_platform_data(rmi_dev);
-	u8 basic_query[RMI_F01_BASIC_QUERY_LEN];
 	struct f01_basic_properties *props = &data->properties;
 
 	mutex_init(&data->control_mutex);
@@ -157,207 +375,10 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 		return error;
 	}
 
-	/* read queries */
-	error = rmi_read_block(rmi_dev, fn->fd.query_base_addr,
-				basic_query, sizeof(basic_query));
-	if (error < 0) {
-		dev_err(&fn->dev, "Failed to read device query registers.\n");
+	error = read_f01_properties(fn, rmi_dev, &data->properties,
+					fn->fd.query_base_addr, &fn->dev);
+	if (error < 0)
 		return error;
-	}
-
-	/* Now parse what we got */
-	props->manufacturer_id = basic_query[0];
-
-	props->has_lts = basic_query[1] & RMI_F01_QRY1_HAS_LTS;
-	props->has_sensor_id =
-			!!(basic_query[1] & RMI_F01_QRY1_HAS_SENSOR_ID);
-	props->has_adjustable_doze =
-			basic_query[1] & RMI_F01_QRY1_HAS_ADJ_DOZE;
-	props->has_adjustable_doze_holdoff =
-			basic_query[1] & RMI_F01_QRY1_HAS_ADJ_DOZE_HOFF;
-	props->has_query42 = basic_query[1] & RMI_F01_QRY1_HAS_PROPS_2;
-
-	snprintf(props->dom, sizeof(props->dom),
-		"20%02d/%02d/%02d",
-		basic_query[5] & RMI_F01_QRY5_YEAR_MASK,
-		basic_query[6] & RMI_F01_QRY6_MONTH_MASK,
-		basic_query[7] & RMI_F01_QRY7_DAY_MASK);
-
-	memcpy(props->product_id, &basic_query[11], RMI_PRODUCT_ID_LENGTH);
-	props->product_id[RMI_PRODUCT_ID_LENGTH] = '\0';
-	query_addr += 11;
-
-	error = rmi_read_block(rmi_dev, query_addr, data->product_id,
-				RMI_PRODUCT_ID_LENGTH);
-	if (error < 0) {
-		dev_err(&fn->dev, "Failed to read product ID.\n");
-		return error;
-	}
-	data->product_id[RMI_PRODUCT_ID_LENGTH] = '\0';
-	get_board_and_rev(fn, driver_data);
-	dev_info(&fn->dev, "found RMI device, manufacturer: %s, product: %s, date: %s\n",
-		 props->manufacturer_id == 1 ?
-		 "synaptics" : "unknown", data->product_id, props->dom);
-
-	/* We'll come back and use this later, depending on some other query
-	 * bits.
-	 */
-	prod_info_addr = query_addr + 6;
-
-	query_addr += RMI_PRODUCT_ID_LENGTH;
-	if (props->has_lts) {
-		error = rmi_read_block(rmi_dev, query_addr, info_buf, 1);
-		if (error < 0) {
-			dev_err(&fn->dev, "Failed to read LTS info.\n");
-			return error;
-		}
-		props->slave_asic_rows = info_buf[0] & RMI_F01_QRY21_SLAVE_ROWS_MASK;
-		props->slave_asic_columns = (info_buf[1] & RMI_F01_QRY21_SLAVE_COLUMNS_MASK) >> 3;
-		query_addr++;
-	}
-
-	if (props->has_sensor_id) {
-		error = rmi_read_block(rmi_dev, query_addr, &props->sensor_id, 1);
-		if (error < 0) {
-			dev_err(&fn->dev, "Failed to read sensor ID.\n");
-			return error;
-		}
-		query_addr++;
-	}
-
-	/* Maybe skip a block of undefined LTS registers. */
-	if (props->has_lts)
-		query_addr += RMI_F01_LTS_RESERVED_SIZE;
-
-	if (props->has_query42) {
-		error = rmi_read_block(rmi_dev, query_addr, info_buf, 1);
-		if (error < 0) {
-			dev_err(&fn->dev, "Failed to read additional properties.\n");
-			return error;
-		}
-		props->has_ds4_queries = info_buf[0] & RMI_F01_QRY42_DS4_QUERIES;
-		props->has_multi_physical = info_buf[0] & RMI_F01_QRY42_MULTI_PHYS;
-		props->has_guest = info_buf[0] & RMI_F01_QRY42_GUEST;
-		props->has_swr = info_buf[0] & RMI_F01_QRY42_SWR;
-		props->has_nominal_report_rate = info_buf[0] & RMI_F01_QRY42_NOMINAL_REPORT;
-		props->has_recalibration_interval = info_buf[0] & RMI_F01_QRY42_RECAL_INTERVAL;
-		query_addr++;
-	}
-
-	if (props->has_ds4_queries) {
-		error = rmi_read_block(rmi_dev, query_addr,
-				       &props->ds4_query_length, 1);
-		if (error < 0) {
-			dev_err(&fn->dev, "Failed to read DS4 query length size.\n");
-			return error;
-		}
-		query_addr++;
-	}
-
-	for (i = 1; i <= props->ds4_query_length; i++) {
-		u8 val;
-		error = rmi_read_block(rmi_dev, query_addr, &val, 1);
-		query_addr++;
-		if (error < 0) {
-			dev_err(&fn->dev, "Failed to read F01_RMI_QUERY43.%02d, code: %d.\n",
-				i, error);
-			continue;
-		}
-		switch (i) {
-		case 1:
-			props->has_package_id_query = val & RMI_F01_QRY43_01_PACKAGE_ID;
-			props->has_build_id_query = val & RMI_F01_QRY43_01_BUILD_ID;
-			props->has_reset_query = val & RMI_F01_QRY43_01_RESET;
-			props->has_maskrev_query = val & RMI_F01_QRY43_01_PACKAGE_ID;
-			break;
-		case 2:
-			props->has_i2c_control = val & RMI_F01_QRY43_02_I2C_CTL;
-			props->has_spi_control = val & RMI_F01_QRY43_02_SPI_CTL;
-			props->has_attn_control = val & RMI_F01_QRY43_02_ATTN_CTL;
-			props->has_win8_vendor_info = val & RMI_F01_QRY43_02_WIN8;
-			props->has_timestamp = val & RMI_F01_QRY43_02_TIMESTAMP;
-			break;
-		case 3:
-			props->has_tool_id_query = val & RMI_F01_QRY43_03_TOOL_ID;
-			props->has_fw_revision_query = val & RMI_F01_QRY43_03_FW_REVISION;
-			break;
-		default:
-			dev_warn(&fn->dev, "No handling for F01_RMI_QUERY43.%02d.\n",
-				 i);
-		}
-	}
-
-	/* If present, the ASIC package ID registers are overlaid on the
-	 * product ID. Go back to the right address (saved previously) and
-	 * read them.
-	 */
-	if (props->has_package_id_query) {
-		error = rmi_read_block(rmi_dev, prod_info_addr, info_buf,
-				PACKAGE_ID_BYTES);
-		if (error < 0)
-			dev_warn(&fn->dev, "Failed to read package ID.\n");
-		else {
-			u16 *val = (u16 *)info_buf;
-			data->package_id = le16_to_cpu(*val);
-			val = (u16 *)(info_buf + 2);
-			data->package_rev = le16_to_cpu(*val);
-		}
-	}
-	prod_info_addr++;
-
-	/* The firmware build id (if present) is similarly overlaid on product
-	 * ID registers.  Go back again and read that data.
-	 */
-	if (props->has_build_id_query) {
-		error = rmi_read_block(rmi_dev, prod_info_addr, info_buf,
-				BUILD_ID_BYTES);
-		if (error < 0)
-			dev_warn(&fn->dev, "Failed to read FW build ID.\n");
-		else {
-			u16 *val = (u16 *)info_buf;
-			data->build_id = le16_to_cpu(*val);
-			data->build_id += info_buf[2] * 65536;
-			dev_dbg(&fn->dev, "FW build ID: %#08x (%u).\n",
-				data->build_id, data->build_id);
-		}
-	}
-
-	if (props->has_reset_query) {
-		u8 val;
-		error = rmi_read_block(rmi_dev, query_addr, &val, 1);
-		query_addr++;
-		if (error < 0)
-			dev_warn(&fn->dev, "Failed to read F01_RMI_QUERY44, code: %d.\n",
-				error);
-		else {
-			props->reset_enabled = val & RMI_F01_QRY44_RST_ENABLED;
-			props->reset_polarity = val & RMI_F01_QRY44_RST_POLARITY;
-			props->pullup_enabled = val & RMI_F01_QRY44_PULLUP_ENABLED;
-			props->reset_pin = (val & RMI_F01_QRY44_RST_PIN_MASK) >> 4;
-		}
-	}
-
-	if (props->has_tool_id_query) {
-		error = rmi_read_block(rmi_dev, query_addr, props->tool_id, RMI_TOOL_ID_LENGTH);
-		if (error < 0)
-			dev_warn(&fn->dev, "Failed to read F01_RMI_QUERY45, code: %d.\n",
-				 error);
-		/* This is a so-called "packet register", so address map
-		 * increments only by one. */
-		query_addr++;
-		props->tool_id[RMI_TOOL_ID_LENGTH] = '\0';
-	}
-
-	if (props->has_fw_revision_query) {
-		error = rmi_read_block(rmi_dev, query_addr, props->fw_revision, RMI_FW_REVISION_LENGTH);
-		if (error < 0)
-			dev_warn(&fn->dev, "Failed to read F01_RMI_QUERY46, code: %d.\n",
-				 error);
-		/* This is a so-called "packet register", so address map
-		 * increments only by one. */
-		query_addr++;
-		props->tool_id[RMI_FW_REVISION_LENGTH] = '\0';
-	}
 
 	/* read control register */
 	if (props->has_adjustable_doze) {

@@ -29,6 +29,7 @@
 /* F34 commands */
 #define F34_WRITE_FW_BLOCK        0x2
 #define F34_ERASE_ALL             0x3
+#define F34_WRITE_LOCKDOWN_BLOCK  0x4
 #define F34_READ_CONFIG_BLOCK     0x5
 #define F34_WRITE_CONFIG_BLOCK    0x6
 #define F34_ERASE_CONFIG          0x7

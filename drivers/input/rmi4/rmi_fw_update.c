@@ -27,6 +27,12 @@
 
 #define ENABLE_WAIT_US (300 * 1000)
 
+#define MAX_FIRMWARE_ID_LEN 10
+
+extern int read_f01_properties(struct rmi_function *fn, struct rmi_device *rmi_dev,
+				struct f01_basic_properties *props, u16 query_addr,
+				struct device *dev);
+
 /** Image file V5, Option 0
  */
 struct image_header {
@@ -47,12 +53,20 @@ static u32 extract_u32(const u8 *ptr)
 		(u32)ptr[3] * 0x1000000;
 }
 
+static u32 extract_u32_be(const u8 *ptr)
+{
+      return (u32)ptr[3] +
+               (u32)ptr[2] * 0x100 +
+               (u32)ptr[1] * 0x10000 +
+               (u32)ptr[0] * 0x1000000;
+}
+
 struct reflash_data {
 	struct rmi_device *rmi_dev;
 	struct pdt_entry *f01_pdt;
-	struct f01_basic_queries f01_queries;
-	struct f01_device_control_0 f01_controls;
-	struct f01_device_status device_status;
+	struct f01_basic_properties f01_properties;
+	struct f01_device_control f01_controls;
+	u8 device_status;
 	char product_id[RMI_PRODUCT_ID_LENGTH+1];
 	struct pdt_entry *f34_pdt;
 	u8 bootloader_id[2];
@@ -60,6 +74,15 @@ struct reflash_data {
 	union f34_control_status f34_controls;
 	const u8 *firmware_data;
 	const u8 *config_data;
+	const u8 *lockdown_data;
+	unsigned int lockdown_size;
+	char *firmware_name;
+};
+
+enum flash_area {
+       NONE,
+       UI_FIRMWARE,
+       CONFIG_AREA
 };
 
 /* If this parameter is true, we will update the firmware regardless of
@@ -80,6 +103,14 @@ MODULE_PARM_DESC(param, "Name of the RMI4 firmware image");
 #define RMI4_IMAGE_FILE_REV2_OFFSET 31
 #define IMAGE_FILE_CHECKSUM_SIZE 4
 #define FIRMWARE_IMAGE_AREA_OFFSET 0x100
+
+#define RMI4_IMAGE_LOCKDOWN_DATA_V2_SIZE    0x30
+#define RMI4_IMAGE_LOCKDOWN_DATA_V3_SIZE    0x40
+#define RMI4_IMAGE_LOCKDOWN_DATA_V5_SIZE    0x50
+
+#define RMI4_IMAGE_LOCKDOWN_DATA_V2_OFFSET  0xD0
+#define RMI4_IMAGE_LOCKDOWN_DATA_V3_OFFSET  0xC0
+#define RMI4_IMAGE_LOCKDOWN_DATA_V5_OFFSET  0xB0
 
 static void extract_header(const u8 *data, int pos, struct image_header *header)
 {
@@ -172,7 +203,7 @@ static int read_f01_controls(struct reflash_data *data)
 	int retval;
 
 	retval = rmi_read(data->rmi_dev, data->f01_pdt->control_base_addr,
-			  &data->f01_controls);
+			  &data->f01_controls.ctrl0);
 	if (retval < 0)
 		return retval;
 	return 0;
@@ -184,7 +215,7 @@ static int write_f01_controls(struct reflash_data *data)
 
 	retval = rmi_write_block(data->rmi_dev,
 			data->f01_pdt->control_base_addr,
-			&data->f01_controls, sizeof(data->f01_controls));
+			&data->f01_controls.ctrl0, sizeof(data->f01_controls.ctrl0));
 	if (retval < 0)
 		return retval;
 	return 0;
@@ -231,39 +262,6 @@ static int wait_for_idle(struct reflash_data *data, int timeout_ms)
 			controls->program_enabled);
 	dev_err(&data->rmi_dev->dev, "Idle:    %d\n", IS_IDLE(controls));
 	return -ETIMEDOUT;
-}
-
-
-static int read_f01_queries(struct reflash_data *data)
-{
-	int retval;
-	u16 addr = data->f01_pdt->query_base_addr;
-
-	retval = rmi_read_block(data->rmi_dev, addr, &data->f01_queries,
-				sizeof(data->f01_queries));
-	if (retval < 0) {
-		dev_err(&data->rmi_dev->dev,
-			"Failed to read F34 queries (code %d).\n", retval);
-		return retval;
-	}
-	addr += sizeof(data->f01_queries);
-	addr += F01_SERIALIZATION_SIZE;
-
-	retval = rmi_read_block(data->rmi_dev, addr, data->product_id,
-				RMI_PRODUCT_ID_LENGTH);
-	if (retval < 0) {
-		dev_err(&data->rmi_dev->dev,
-			"Failed to read product ID (code %d).\n", retval);
-		return retval;
-	}
-	data->product_id[RMI_PRODUCT_ID_LENGTH] = 0;
-	dev_dbg(&data->rmi_dev->dev, "F01 Product id:   %s\n",
-			data->product_id);
-	dev_dbg(&data->rmi_dev->dev, "F01 product info: %#04x %#04x\n",
-			data->f01_queries.productinfo_1,
-			data->f01_queries.productinfo_2);
-
-	return 0;
 }
 
 static int read_f34_queries(struct reflash_data *data)
@@ -366,6 +364,9 @@ static int enter_flash_programming(struct reflash_data *data)
 	if (retval < 0)
 		return retval;
 
+	if (data->rmi_dev->xport->info.proto_type == RMI_PROTOCOL_HID)
+                msleep(100);
+
 	retval = wait_for_idle(data, F34_ENABLE_WAIT_MS);
 	if (retval) {
 		dev_err(&rmi_dev->dev, "Did not reach idle state after %d ms. Code: %d.\n",
@@ -392,7 +393,7 @@ static int enter_flash_programming(struct reflash_data *data)
 			retval);
 		return retval;
 	}
-	if (!(data->device_status.flash_prog)) {
+	if (!RMI_F01_STATUS_BOOTLOADER(data->device_status)) {
 		dev_err(&rmi_dev->dev, "Device reports as not in flash programming mode.\n");
 		return -EINVAL;
 	}
@@ -410,8 +411,8 @@ static int enter_flash_programming(struct reflash_data *data)
 			retval);
 		return retval;
 	}
-	data->f01_controls.nosleep = true;
-	data->f01_controls.sleep_mode = RMI_SLEEP_MODE_NORMAL;
+	data->f01_controls.ctrl0 |= RMI_F01_CRTL0_NOSLEEP_BIT;
+	data->f01_controls.ctrl0 |= RMI_SLEEP_MODE_NORMAL;
 
 	retval = write_f01_controls(data);
 	if (retval) {
@@ -437,7 +438,11 @@ static void reset_device(struct reflash_data *data)
 			 "WARNING - post-flash reset failed, code: %d.\n",
 			 retval);
 	msleep(pdata->reset_delay_ms);
+	if (data->rmi_dev->xport->post_reset)
+		data->rmi_dev->xport->post_reset(data->rmi_dev->xport);
 	dev_dbg(&data->rmi_dev->dev, "Reset completed.\n");
+
+	rescan_pdt(data);
 }
 
 /*
@@ -501,6 +506,20 @@ static int write_configuration(struct reflash_data *data)
 		data->f34_queries.config_block_count, F34_WRITE_CONFIG_BLOCK);
 }
 
+static int write_lockdown(struct reflash_data *data)
+{
+       int num_blocks;
+
+       if (data->f34_queries.unlocked && data->lockdown_data) {
+               num_blocks = data->lockdown_size / 0x10;
+
+               return write_blocks(data, (u8 *) data->lockdown_data, num_blocks,
+                                       F34_WRITE_LOCKDOWN_BLOCK);
+       }
+
+       return 0;
+}
+
 static void reflash_firmware(struct reflash_data *data)
 {
 	struct timespec start;
@@ -512,6 +531,14 @@ static void reflash_firmware(struct reflash_data *data)
 	if (retval)
 		return;
 
+	retval = write_lockdown(data);
+        if (retval)
+                return;
+
+	retval = enter_flash_programming(data);
+        if (retval)
+                return;
+
 	retval = write_bootloader_id(data);
 	if (retval)
 		return;
@@ -521,6 +548,9 @@ static void reflash_firmware(struct reflash_data *data)
 	retval = write_f34_command(data, F34_ERASE_ALL);
 	if (retval)
 		return;
+
+	if (data->rmi_dev->xport->info.proto_type == RMI_PROTOCOL_HID)
+                msleep(F34_ERASE_WAIT_MS);
 
 	retval = wait_for_idle(data, F34_ERASE_WAIT_MS);
 	if (retval) {
@@ -558,36 +588,196 @@ static void reflash_firmware(struct reflash_data *data)
 	}
 }
 
+static void reflash_config(struct reflash_data *data)
+{
+        struct timespec start;
+        struct timespec end;
+        s64 duration_ns;
+        int retval = 0;
+
+        retval = enter_flash_programming(data);
+        if (retval)
+                return;
+
+        retval = write_bootloader_id(data);
+        if (retval)
+                return;
+
+        dev_dbg(&data->rmi_dev->dev, "Erasing config block...\n");
+        getnstimeofday(&start);
+        retval = write_f34_command(data, F34_ERASE_CONFIG);
+        if (retval)
+                return;
+
+        retval = wait_for_idle(data, F34_ERASE_WAIT_MS);
+        if (retval) {
+                dev_err(&data->rmi_dev->dev,
+                        "Failed to reach idle state. Code: %d.\n", retval);
+                return;
+        }
+        getnstimeofday(&end);
+        duration_ns = timespec_to_ns(&end) - timespec_to_ns(&start);
+        dev_dbg(&data->rmi_dev->dev,
+                 "Erase complete, time: %lld ns.\n", duration_ns);
+
+        if (data->config_data) {
+                dev_dbg(&data->rmi_dev->dev, "Writing configuration...\n");
+                getnstimeofday(&start);
+                retval = write_configuration(data);
+                if (retval)
+                        return;
+                getnstimeofday(&end);
+                duration_ns = timespec_to_ns(&end) - timespec_to_ns(&start);
+                dev_dbg(&data->rmi_dev->dev,
+                         "Done writing config, time: %lld ns.\n", duration_ns);
+        }
+}
+
 /* Returns false if the firmware should not be reflashed.
  */
 static bool go_nogo(struct reflash_data *data, struct image_header *header)
 {
 	int retval;
+        int index = 0;
+        char *strptr;
+        int deviceFirmwareID;
+        int imageConfigID;
+        int deviceConfigID;
+        unsigned long imageFirmwareID;
+        unsigned char config_id[4];
+        u8 fwid[3];
+        enum flash_area flash_area = NONE;
+
+        char *imagePR = kzalloc(sizeof(MAX_FIRMWARE_ID_LEN), GFP_KERNEL);
 
 	if (force) {
 		dev_dbg(&data->rmi_dev->dev, "Reflash force flag in effect.\n");
-		return true;
+		flash_area = UI_FIRMWARE;
+		goto exit;
 	}
 
-	if (data->f01_queries.productinfo_1 < header->product_info[0] ||
-		data->f01_queries.productinfo_2 < header->product_info[1]) {
+	if ((data->f01_properties.productinfo >> 8) < header->product_info[0] ||
+		(data->f01_properties.productinfo & 0x0F) < header->product_info[1]) {
 		dev_info(&data->rmi_dev->dev,
 			 "FW product ID is older than image product ID.\n");
 		return true;
 	}
 
 	retval = read_f01_status(data);
-	if (retval)
+	if (retval) {
 		dev_err(&data->rmi_dev->dev,
 			"Failed to read F01 status. Code: %d.\n", retval);
+		goto exit;
+	}
 
 
 	dev_dbg(&data->rmi_dev->dev, "Flash prog bit at go/nogo: %d\n",
-			data->device_status.flash_prog);
-	return data->device_status.flash_prog;
+			RMI_F01_STATUS_BOOTLOADER(data->device_status));
+
+	        /* device is in bootloader mode, do firmware update */
+        if (RMI_F01_STATUS_BOOTLOADER(data->device_status)) {
+                flash_area = UI_FIRMWARE;
+                goto exit;
+        }
+
+
+        /* check device firmware number */
+        retval = rmi_read_block(data->rmi_dev,
+                        data->f01_pdt->query_base_addr + 18,
+                        fwid,
+                        sizeof(fwid));
+        if (retval < 0) {
+                dev_err(&data->rmi_dev->dev, "Failed to read build id.\n");
+                goto exit;
+        }
+
+        deviceFirmwareID = ((int)fwid[2] << 16) | ((int)fwid[1] << 8) | (int)fwid[0];
+
+        /* check img firmware number */
+        strptr = strstr(data->firmware_name, "PR");
+        if (!strptr) {
+                dev_err(&data->rmi_dev->dev,
+                        "No valid PR number (PRxxxxxxx.img)" \
+                        "found in image file name...\n");
+                goto exit;
+        }
+
+        strptr += 2;
+        while (strptr[index] >= '0' && strptr[index] <= '9') {
+                imagePR[index] = strptr[index];
+                index++;
+        }
+        imagePR[index] = 0;
+
+        retval = kstrtoul(imagePR, 10, &imageFirmwareID);
+        if (retval == -EINVAL) {
+                dev_err(&data->rmi_dev->dev,
+                        "invalid image firmware id...\n");
+                goto exit;
+        }
+
+        dev_info(&data->rmi_dev->dev,
+                        "Device firmware id %d, .img firmware id %d\n",
+                        deviceFirmwareID,
+                        (unsigned int)imageFirmwareID);
+        if (imageFirmwareID > deviceFirmwareID) {
+                flash_area = UI_FIRMWARE;
+                goto exit;
+        } else if (imageFirmwareID != deviceFirmwareID) {
+                flash_area = NONE;
+                goto exit;
+        }
+        /* check device config id */
+        retval = rmi_read_block(data->rmi_dev,
+                                data->f34_pdt->control_base_addr,
+                                config_id,
+                                sizeof(config_id));
+        if (retval < 0) {
+                dev_err(&data->rmi_dev->dev,
+                        "Failed to read config ID (code %d).\n", retval);
+                flash_area = NONE;
+                goto exit;
+        }
+        deviceConfigID =  extract_u32_be(config_id);
+
+        dev_info(&data->rmi_dev->dev,
+                "Device config ID 0x%02X, 0x%02X, 0x%02X, 0x%02X\n",
+                config_id[0], config_id[1], config_id[2], config_id[3]);
+
+
+        /* check img config id */
+        dev_info(&data->rmi_dev->dev,
+                        ".img config ID 0x%02X, 0x%02X, 0x%02X, 0x%02X\n",
+                        data->config_data[0],
+                        data->config_data[1],
+                        data->config_data[2],
+                        data->config_data[3]);
+
+        imageConfigID =  extract_u32_be(data->config_data);
+
+        dev_info(&data->rmi_dev->dev, "device config id %d, .img config id %d\n",
+                                deviceConfigID, imageConfigID);
+
+        if (imageConfigID > deviceConfigID) {
+                flash_area = CONFIG_AREA;
+                goto exit;
+        }
+
+
+exit:
+        kfree(imagePR);
+
+        if (flash_area == NONE)
+                dev_info(&data->rmi_dev->dev,
+                        "Nothing needs to be updated\n");
+        else
+                dev_info(&data->rmi_dev->dev,
+                        "Update %s block\n",
+                        flash_area == UI_FIRMWARE ? "UI FW" : "CONFIG");
+
+        return flash_area;
 }
 
-#define NAME_BUFFER_SIZE (RMI_PRODUCT_ID_LENGTH+12)
 
 void rmi4_fw_update(struct rmi_device *rmi_dev,
 		struct pdt_entry *f01_pdt, struct pdt_entry *f34_pdt)
@@ -595,26 +785,16 @@ void rmi4_fw_update(struct rmi_device *rmi_dev,
 	struct timespec start;
 	struct timespec end;
 	s64 duration_ns;
-	char *firmware_name;
 	const struct firmware *fw_entry = NULL;
 	int retval;
 	struct image_header *header = NULL;
 	struct pdt_properties pdt_props;
 	struct reflash_data *data = NULL;
+	enum flash_area flash_area;
 	struct rmi_device_platform_data *pdata = to_rmi_platform_data(rmi_dev);
 
 	getnstimeofday(&start);
 
-	firmware_name = kcalloc(NAME_BUFFER_SIZE, sizeof(char), GFP_KERNEL);
-	if (!firmware_name) {
-		dev_err(&rmi_dev->dev, "Failed to allocate firmware_name.\n");
-		goto done;
-	}
-	header = kzalloc(sizeof(struct image_header), GFP_KERNEL);
-	if (!header) {
-		dev_err(&rmi_dev->dev, "Failed to allocate header.\n");
-		goto done;
-	}
 	data = kzalloc(sizeof(struct reflash_data), GFP_KERNEL);
 	if (!data) {
 		dev_err(&rmi_dev->dev, "Failed to allocate data.\n");
@@ -623,6 +803,17 @@ void rmi4_fw_update(struct rmi_device *rmi_dev,
 	data->f01_pdt = f01_pdt;
 	data->f34_pdt = f34_pdt;
 	data->rmi_dev = rmi_dev;
+
+	data->firmware_name = kcalloc(NAME_BUFFER_SIZE, sizeof(char), GFP_KERNEL);
+	if (!data->firmware_name) {
+		dev_err(&rmi_dev->dev, "Failed to allocate firmware_name.\n");
+		goto done;
+	}
+	header = kzalloc(sizeof(struct image_header), GFP_KERNEL);
+	if (!header) {
+		dev_err(&rmi_dev->dev, "Failed to allocate header.\n");
+		goto done;
+	}
 
 	retval = rmi_read(rmi_dev, PDT_PROPERTIES_LOCATION, &pdt_props);
 	if (retval < 0) {
@@ -636,7 +827,8 @@ void rmi4_fw_update(struct rmi_device *rmi_dev,
 		goto done;
 	}
 
-	retval = read_f01_queries(data);
+	retval = read_f01_properties(NULL, rmi_dev, &data->f01_properties,
+					data->f01_pdt->query_base_addr, &rmi_dev->dev);
 	if (retval) {
 		dev_err(&rmi_dev->dev, "F01 queries failed, code = %d.\n",
 			retval);
@@ -649,28 +841,29 @@ void rmi4_fw_update(struct rmi_device *rmi_dev,
 		goto done;
 	}
 	if (img_name && strlen(img_name))
-		snprintf(firmware_name, NAME_BUFFER_SIZE, "rmi4/%s.img",
+		snprintf(data->firmware_name, NAME_BUFFER_SIZE, "rmi4/%s.img",
 			img_name);
 	else if (pdata->firmware_name && strlen(pdata->firmware_name))
-		snprintf(firmware_name, NAME_BUFFER_SIZE, "rmi4/%s.img",
+		snprintf(data->firmware_name, NAME_BUFFER_SIZE, "rmi4/%s.img",
 			pdata->firmware_name);
 	else {
 		if (!strlen(data->product_id)) {
 			dev_err(&rmi_dev->dev, "Product ID is missing or empty - will not reflash.\n");
 			goto done;
 		}
-		snprintf(firmware_name, NAME_BUFFER_SIZE, "rmi4/%s.img",
+		snprintf(data->firmware_name, NAME_BUFFER_SIZE, "rmi4/%s.img",
 			data->product_id);
 	}
-	dev_info(&rmi_dev->dev, "Requesting %s.\n", firmware_name);
-	retval = request_firmware(&fw_entry, firmware_name, &rmi_dev->dev);
+
+	dev_info(&rmi_dev->dev, "Requesting %s.\n", data->firmware_name);
+	retval = request_firmware(&fw_entry, data->firmware_name, &rmi_dev->dev);
 	if (retval != 0) {
 		dev_err(&rmi_dev->dev, "Firmware %s not available, code = %d\n",
-			firmware_name, retval);
+			data->firmware_name, retval);
 		goto done;
 	}
 
-	dev_dbg(&rmi_dev->dev, "Got firmware, size: %d.\n", fw_entry->size);
+	dev_dbg(&rmi_dev->dev, "Got firmware, size: %d.\n", (int)fw_entry->size);
 	extract_header(fw_entry->data, 0, header);
 	dev_dbg(&rmi_dev->dev, "Img checksum:           %#08X\n",
 		header->checksum);
@@ -691,23 +884,57 @@ void rmi4_fw_update(struct rmi_device *rmi_dev,
 		data->config_data = fw_entry->data + F34_FW_IMAGE_OFFSET +
 			header->image_size;
 
-	if (go_nogo(data, header)) {
-		reflash_firmware(data);
-		reset_device(data);
-	} else
-		dev_dbg(&rmi_dev->dev, "Go/NoGo said don't reflash.\n");
+        if (header->bootloader_version == 2) {
+                data->lockdown_data = fw_entry->data
+                                        + RMI4_IMAGE_LOCKDOWN_DATA_V2_OFFSET;
+                data->lockdown_size = RMI4_IMAGE_LOCKDOWN_DATA_V2_SIZE;
+        } else if (header->bootloader_version <= 4) {
+                data->lockdown_data = fw_entry->data
+                                        + RMI4_IMAGE_LOCKDOWN_DATA_V3_OFFSET;
+                data->lockdown_size = RMI4_IMAGE_LOCKDOWN_DATA_V3_SIZE;
+        } else if (header->bootloader_version >= 5) {
+                data->lockdown_data = fw_entry->data
+                                        + RMI4_IMAGE_LOCKDOWN_DATA_V5_OFFSET;
+                data->lockdown_size = RMI4_IMAGE_LOCKDOWN_DATA_V5_SIZE;
+        }
+
+        flash_area = go_nogo(data, header);
+        if (flash_area != NONE) {
+                if (flash_area == UI_FIRMWARE)
+                        reflash_firmware(data);
+                else if (flash_area == CONFIG_AREA)
+                        reflash_config(data);
+                reset_device(data);
+
+                retval = read_f01_status(data);
+                if (retval != 0) {
+                        dev_err(&data->rmi_dev->dev,
+                                "Failed to read F01 status. Code: %d.\n", retval);
+                        goto done;
+                }
+
+                if (RMI_F01_STATUS_BOOTLOADER(data->device_status)) {
+                        dev_warn(&rmi_dev->dev,
+                                "Reset in bootloader mode (status 0x%X).\n",
+                                RMI_F01_STATUS_CODE(data->device_status));
+                } else
+                        dev_info(&rmi_dev->dev,
+                                "%s update succeed!\n",
+                                flash_area == UI_FIRMWARE ?
+                                "Firmware" : "Config");
+        } else
+                dev_dbg(&rmi_dev->dev, "Go/NoGo said don't reflash.\n");
 
 	if (fw_entry)
 		release_firmware(fw_entry);
-
 
 done:
 	getnstimeofday(&end);
 	duration_ns = timespec_to_ns(&end) - timespec_to_ns(&start);
 	dev_dbg(&rmi_dev->dev, "Time to reflash: %lld ns.\n", duration_ns);
 
+	kfree(data->firmware_name);
 	kfree(data);
-	kfree(firmware_name);
 	kfree(header);
 	return;
 }

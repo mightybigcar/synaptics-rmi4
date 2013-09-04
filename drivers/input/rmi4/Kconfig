@@ -32,6 +32,15 @@ config RMI4_DEBUG
 
 	  If unsure, say N.
 
+config RMI4_FWLIB
+        bool "RMI4 Firmware Update"
+        depends on RMI4_CORE
+        help
+          Say Y here to enable in-kernel firmware update capability.
+
+          The RMI4 core will check for firmware updates during the device
+          initialization process, and apply the updates if appropriate.
+
 config RMI4_I2C
 	tristate "RMI4 I2C Support"
 	depends on RMI4_CORE && I2C
