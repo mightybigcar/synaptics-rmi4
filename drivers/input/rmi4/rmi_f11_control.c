@@ -916,13 +916,18 @@ static struct rmi_control_handler_data *f11_ctl_attach(struct device *dev, void 
 	/* Increase with one since number of sensors is zero based */
 	for (i = 0; i < (f11->nr_sensors + 1); i++) {
 		ctl_data->sensor_data[i].sensor = &f11->sensors[i];
+#ifdef CONFIG_RMI4_DEBUG
 		rmi_f11_setup_sensor_debugfs(&ctl_data->sensor_data[i]);
+#endif
 	}
 
 	if (sysfs_create_group(&fn->dev.kobj, &fn11_attrs) < 0) {
 		dev_warn(&fn->dev, "Failed to create query sysfs files.");
 	}
+
+#ifdef CONFIG_RMI4_DEBUG
 	rmi_f11_setup_debugfs(ctl_data);
+#endif
 
 	return &ctl_data->handler_data;
 }

@@ -248,7 +248,9 @@ static struct rmi_control_handler_data *f12_ctl_attach(struct device *dev, void 
 	f12_data = fn->data;
 	ctl_data->f12 = f12_data;
 
+#ifdef CONFIG_RMI4_DEBUG
 	rmi_f12_setup_debugfs(ctl_data);
+#endif
 
 	if (sysfs_create_group(&fn->dev.kobj, &fn12_attrs) < 0) {
 		dev_warn(&fn->dev, "Failed to create query sysfs files.");

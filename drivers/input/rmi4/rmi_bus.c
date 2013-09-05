@@ -45,7 +45,7 @@ struct device_type rmi_device_type = {
 };
 EXPORT_SYMBOL_GPL(rmi_device_type);
 
-#if CONFIG_RMI4_DEBUG
+#ifdef CONFIG_RMI4_DEBUG
 
 static void rmi_physical_setup_debugfs(struct rmi_device *rmi_dev)
 {
@@ -170,7 +170,7 @@ struct device_type rmi_function_type = {
 };
 EXPORT_SYMBOL_GPL(rmi_function_type);
 
-#if CONFIG_RMI4_DEBUG
+#ifdef CONFIG_RMI4_DEBUG
 
 static void rmi_function_setup_debugfs(struct rmi_function *fn)
 {

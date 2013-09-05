@@ -870,11 +870,9 @@ static int rmi_f11_initialize(struct rmi_function *fn)
 		sensor->max_x = max_x_pos;
 		sensor->max_y = max_y_pos;
 
-		pr_info("%s: before f11_2d_construct_data\n", __func__);
 		rc = f11_2d_construct_data(sensor);
 		if (rc < 0)
 			return rc;
-		pr_info("%s: after f11_2d_construct_data\n", __func__);
 
 		ctrl = &f11->dev_controls;
 		if (sensor->axis_align.delta_x_threshold) {
