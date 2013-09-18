@@ -54,6 +54,17 @@ config RMI4_F11
 	  To compile this driver as a module, choose M here: the
 	  module will be called rmi-f11.
 
+config RMI4_F1A
+	tristate "RMI4 Function 1A (capacitive buttons)"
+	depends on RMI4_CORE
+	help
+	  Say Y here if you want to add support for RMI4 function 11.
+
+	  Function 11 provides capacitive button support for RMI4 sensors.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called rmi-f1a.
+
 config RMI4_F11_PEN
 	bool "RMI4 F11 Pen Support"
 	depends on RMI4_F11

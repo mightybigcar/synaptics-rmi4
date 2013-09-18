@@ -207,6 +207,10 @@ static int rmi_f1a_read_control_parameters(struct rmi_device *rmi_dev,
 	union f1a_0d_query *query = &f1a->query;
 	struct f1a_0d_control *control = &f1a->control;
 
+	dev_dbg(&rmi_dev->dev, "query is %#010x.\n", query);
+	dev_dbg(&rmi_dev->dev, "control is %#010x.\n", control);
+	return 0;
+
 	if (query->has_general_control) {
 		retval = rmi_read_block(rmi_dev, control->reg_0->address,
 				(u8 *)control->reg_0->regs,
@@ -316,7 +320,7 @@ static int rmi_f1a_alloc_memory(struct rmi_function *fn)
 		return rc;
 	}
 
-	f1a->sensor_button_count = f1a->query.max_button_count+1;
+	f1a->sensor_button_count = f1a->query.max_button_count + 1;
 
 	f1a->button_bitmask_size =
 			sizeof(u8)*(f1a->sensor_button_count + 7) / 8;
@@ -333,6 +337,8 @@ static int rmi_f1a_alloc_memory(struct rmi_function *fn)
 		dev_err(&fn->dev, "Failed to allocate button map.\n");
 		return -ENOMEM;
 	}
+	dev_dbg(&fn->dev, "button_map as allocated for %d buttons: %#010x\n", f1a->sensor_button_count, f1a->button_map);
+	return 0;
 
 	/* allocate memory for control reg */
 	/* reg 0 */
@@ -520,6 +526,8 @@ static int rmi_f1a_initialize(struct rmi_function *fn)
 			dev_warn(&fn->dev,
 				 "Platformdata button map is missing!\n");
 		else {
+			dev_dbg(&fn->dev, "f1a_button_map->nbuttons: %d\n", pdata->f1a_button_map->nbuttons);
+			dev_dbg(&fn->dev, "sensor_button_count: %d\n", f1a->sensor_button_count);
 			if (pdata->f1a_button_map->nbuttons !=
 					f1a->sensor_button_count)
 				dev_warn(&fn->dev,
@@ -527,12 +535,20 @@ static int rmi_f1a_initialize(struct rmi_function *fn)
 					pdata->f1a_button_map->nbuttons,
 					f1a->sensor_button_count);
 			f1a->button_map_size = min(f1a->sensor_button_count,
-					 pdata->f1a_button_map->nbuttons);
-			for (i = 0; i < f1a->button_map_size; i++)
+						   pdata->f1a_button_map->nbuttons);
+			dev_dbg(&fn->dev, "button_map_size: %d\n", f1a->button_map_size);
+			dev_dbg(&fn->dev, "button_map: %#010x\n", f1a->button_map);
+			dev_dbg(&fn->dev, "f1a_button_map->map: %#010x\n", pdata->f1a_button_map->map);
+			for (i = 0; i < f1a->button_map_size; i++) {
 				f1a->button_map[i] =
 					pdata->f1a_button_map->map[i];
+			}
+			dev_dbg(&fn->dev, "Copied button map.\n");
 		}
 	}
+
+	mutex_init(&f1a->control_mutex);
+	mutex_init(&f1a->data_mutex);
 
 	retval = rmi_f1a_read_control_parameters(rmi_dev, f1a);
 	if (retval < 0) {
@@ -541,8 +557,6 @@ static int rmi_f1a_initialize(struct rmi_function *fn)
 		return retval;
 	}
 
-	mutex_init(&f1a->control_mutex);
-	mutex_init(&f1a->data_mutex);
 	return 0;
 }
 
@@ -587,7 +601,7 @@ static int rmi_f1a_register_device(struct rmi_function *fn)
 	/* set bits for each button. */
 	for (i = 0; i < f1a->button_map_size; i++) {
 		set_bit(f1a->button_map[i], input_dev->keybit);
-		input_set_capability(input_dev, EV_KEY, f1a->button_map[i]);
+//		input_set_capability(input_dev, EV_KEY, f1a->button_map[i]);
 	}
 
 	rc = input_register_device(input_dev);
@@ -785,25 +799,36 @@ static int rmi_f1a_probe(struct rmi_function *fn)
 {
 	int rc;
 
+	dev_dbg(&fn->dev, "Probing F1A...\n");
+
 	rc = rmi_f1a_alloc_memory(fn);
 	if (rc < 0)
 		goto err_free_data;
+
+	dev_dbg(&fn->dev, "Memory allocated...\n");
 
 	rc = rmi_f1a_initialize(fn);
 	if (rc < 0)
 		goto err_free_data;
 
+	dev_dbg(&fn->dev, "Initialized...\n");
+
 	rc = rmi_f1a_register_device(fn);
 	if (rc < 0)
 		goto err_free_data;
+
+	dev_dbg(&fn->dev, "Registered...\n");
 
 	rc = rmi_f1a_create_sysfs(fn);
 	if (rc < 0)
 		goto err_free_data;
 
+	dev_dbg(&fn->dev, "Sysfs...\n");
+
 	return 0;
 
 err_free_data:
+	dev_err(&fn->dev, "%s failed with code %d.\n", __func__, rc);
 	rmi_f1a_free_memory(fn);
 
 	return rc;
@@ -836,6 +861,8 @@ static int rmi_f1a_attention(struct rmi_function *fn,
 			__func__);
 		return error;
 	}
+
+	dev_dbg(&fn->dev, "Handling ATTN, button mask: %#06x.\n", f1a->button_data_buffer[0]);
 
 	/* Generate events for buttons that change state. */
 	for (button = 0; button < f1a->sensor_button_count; button++) {

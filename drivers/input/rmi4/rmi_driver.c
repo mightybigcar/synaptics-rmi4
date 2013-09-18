@@ -514,7 +514,7 @@ static int create_function_dev(struct rmi_device *rmi_dev,
 
 	pdata = to_rmi_platform_data(rmi_dev);
 
-	dev_dbg(dev, "Initializing F%02X for %s.\n", pdt->function_number,
+	dev_dbg(dev, "Creating F%02X device for %s.\n", pdt->function_number,
 		pdata->sensor_name);
 
 	fn = kzalloc(sizeof(struct rmi_function), GFP_KERNEL);

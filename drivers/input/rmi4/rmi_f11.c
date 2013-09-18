@@ -179,9 +179,9 @@ static void rmi_f11_abs_pos_report(struct f11_data *f11,
 		input_report_abs(sensor->input, ABS_MT_ORIENTATION, orient);
 		input_report_abs(sensor->input, ABS_MT_POSITION_X, x);
 		input_report_abs(sensor->input, ABS_MT_POSITION_Y, y);
-// 		dev_dbg(&sensor->fn->dev,
-// 			"finger[%d]:%d - x:%d y:%d z:%d w_max:%d w_min:%d\n",
-// 			n_finger, finger_state, x, y, z, w_max, w_min);
+		dev_dbg(&sensor->fn->dev,
+			"finger[%d]:%d - x:%d y:%d z:%d w_max:%d w_min:%d\n",
+			n_finger, finger_state, x, y, z, w_max, w_min);
 	}
 	/* MT sync between fingers */
 	if (sensor->type_a)
