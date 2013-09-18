@@ -6,7 +6,7 @@
 #define RMI_VERSION_SUBMINOR 5
 
 #define RMI_VERSION_BRANCH development
-#define RMI_EXTRA_NUMBER 0
+#define RMI_EXTRA_NUMBER 2
 #define RMI_EXTRA_STRING development.0
 
 #define rmi_tostr(s) #s
