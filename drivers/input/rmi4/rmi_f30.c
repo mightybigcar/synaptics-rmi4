@@ -695,7 +695,7 @@ int rmi_f30_attention(struct rmi_function *fn,
 		&& gpiled < f30->control.reg_2->length; gpiled++)
 	{
 		status = f30->data.datareg_0->regs[gpiled].gpi_led_data;
-		dev_warn(&fn->dev,
+		dev_dbg(&fn->dev,
 			"rmi_f30 attention gpiled=%d data status=%d\n",
 			gpiled,
 			f30->data.datareg_0->regs[gpiled].gpi_led_data);
