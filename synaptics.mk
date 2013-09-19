@@ -86,13 +86,11 @@ tarball: bump-extra
 	tar -czf /tmp/$(TAR_NAME) \
 		--exclude drivers/input/rmi4/rmi_f30.c drivers/input/rmi4/rmi_f31.c \
 		README-SYNAPTICS.txt CHANGELOG-SYNAPTICS.txt \
-		Documentation/ABI/testing/*-rmi4 Documentation/input/rmi*.txt \
 		drivers/input/Makefile drivers/input/Kconfig drivers/input/rmi4/Kconfig \
 		drivers/input/rmi4/Makefile drivers/input/rmi4/*.[ch] include/linux/rmi.h \
-		arch/arm/configs/panda_defconfig arch/arm/mach-omap2/board-omap4panda.c \
-		include/linux/kconfig.h include/linux/input.h include/linux/device.h \
-		include/linux/i2c.h \
-		firmware/Makefile firmware/rmi4/*
+		arch/arm/configs/panda_defconfig arch/arm/mach-omap2/board-omap4panda.c
+#		include/linux/kconfig.h include/linux/input.h include/linux/device.h \
+#		include/linux/i2c.h
 	scp /tmp/$(TAR_NAME) venom:/home/cheiny/public_html/kernel.org/tarball/
 	git commit -m "Updated for tarball $(TAR_NAME)" drivers/input/rmi4/rmi_version.h
 	git tag $(TAR_TAG)
@@ -108,4 +106,4 @@ version:
 	@echo Extra: $(VER_EXTRA)
 	@echo Tarfile: $(TAR_NAME)
 	@echo Tar tag: $(TAR_TAG)
-	
+
