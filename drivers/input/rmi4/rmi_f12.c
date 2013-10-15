@@ -504,11 +504,11 @@ static void report_one_object(struct f12_data *f12, struct rmi_f12_object_data *
 			le16_to_cpu(object->pos_x));
 		input_report_abs(f12->input, ABS_MT_POSITION_Y,
 			le16_to_cpu(object->pos_y));
- 		pr_debug(
- 			"finger[%d]:%d - x:%d y:%d z:%d wx:%d wy:%d\n",
- 			slot, object->type, le16_to_cpu(object->pos_x),
- 			le16_to_cpu(object->pos_y), object->z,
- 			object->wx, object->wy);
+//  		pr_debug(
+//  			"finger[%d]:%d - x:%d y:%d z:%d wx:%d wy:%d\n",
+//  			slot, object->type, le16_to_cpu(object->pos_x),
+//  			le16_to_cpu(object->pos_y), object->z,
+//  			object->wx, object->wy);
 	}
 }
 
