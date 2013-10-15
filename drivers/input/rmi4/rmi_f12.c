@@ -18,6 +18,26 @@
 #include <linux/rmi.h>
 #include "rmi_driver.h"
 
+
+/** If CTRL28 is present, it represents a bitmask of the information to be
+ * reported for each finger/object.
+ */
+#define F12_REPORT_TYPE (1 << 0)
+#define F12_REPORT_X_LSB (1 << 1)
+#define F12_REPORT_X_MSB (1 << 2)
+#define F12_REPORT_Y_LSB (1 << 3)
+#define F12_REPORT_Y_MSB (1 << 4)
+#define F12_REPORT_Z (1 << 5)
+#define F12_REPORT_WX (1 << 6)
+#define F12_REPORT_WY (1 << 7)
+/** By default, we're interested in all the data for a finger.
+ */
+#define F12_REPORT_DEFAULT (F12_REPORT_TYPE | \
+	F12_REPORT_X_LSB | F12_REPORT_X_MSB | \
+	F12_REPORT_Y_LSB | F12_REPORT_Y_MSB | \
+	F12_REPORT_Z | F12_REPORT_WX | F12_REPORT_WY)
+#define F12_REPORT_ENABLES_REG 28
+
 /**
  * Describes the size and subpacket presence for a given packet register.
  * @nr_subpackets - how many subpackets can there be in this register (not
@@ -266,15 +286,36 @@ exit:
 	return retval;
 }
 
+/** Handy diagnostic routine for dumping register descriptors.
+ */
+static void rmi_dump_descriptor(struct rmi_function *fn,
+				struct rmi_reg_descriptor *desc,
+				char* desc_name)
+{
+	int reg;
+	
+	dev_dbg(&fn->dev, "F%02X %s has %d presence bits.\n", fn->fd.function_number, desc_name, desc->presence_bits);
+	for (reg = 0; reg < desc->presence_bits; reg++) {
+		dev_dbg(&fn->dev, "F%02X %s%02d - present: %d.\n", fn->fd.function_number, desc_name, reg, rmi_has_register(desc, reg));
+	}
+	reg = find_first_bit(desc->presence, desc->presence_bits);
+}
+
+static void rmi_dump_reg_descriptors(struct rmi_function *fn,
+				struct rmi_descriptors *descs)
+{
+	rmi_dump_descriptor(fn, &descs->control, "CTRL");
+}
+
 /**
  * Reads and parses a set of register descriptors.
  */
 static int rmi_read_descriptors(struct rmi_function *fn,
-				struct rmi_descriptors *desc,
+				struct rmi_descriptors *descs,
 				u16 address) {
 	int retval;
 
-	retval = rmi_read_reg_descriptor(fn, &desc->query, address);
+	retval = rmi_read_reg_descriptor(fn, &descs->query, address);
 	if (retval) {
 		dev_err(&fn->dev, "Failed to read query descriptor, code %d\n",
 			retval);
@@ -282,7 +323,7 @@ static int rmi_read_descriptors(struct rmi_function *fn,
 	}
 	address += 3;
 
-	retval = rmi_read_reg_descriptor(fn, &desc->control, address);
+	retval = rmi_read_reg_descriptor(fn, &descs->control, address);
 	if (retval) {
 		dev_err(&fn->dev, "Failed to read control descriptor, code %d\n",
 			retval);
@@ -290,11 +331,12 @@ static int rmi_read_descriptors(struct rmi_function *fn,
 	}
 	address += 3;
 
-	retval = rmi_read_reg_descriptor(fn, &desc->data, address);
+	retval = rmi_read_reg_descriptor(fn, &descs->data, address);
 	if (retval)
 		dev_err(&fn->dev, "Failed to read data descriptor, code %d\n",
 			retval);
 
+	rmi_dump_reg_descriptors(fn, descs);
 	return retval;
 }
 
@@ -462,11 +504,11 @@ static void report_one_object(struct f12_data *f12, struct rmi_f12_object_data *
 			le16_to_cpu(object->pos_x));
 		input_report_abs(f12->input, ABS_MT_POSITION_Y,
 			le16_to_cpu(object->pos_y));
-// 		pr_debug(
-// 			"finger[%d]:%d - x:%d y:%d z:%d wx:%d wy:%d\n",
-// 			slot, object->type, le16_to_cpu(object->pos_x),
-// 			le16_to_cpu(object->pos_y), object->z,
-// 			object->wx, object->wy);
+ 		pr_debug(
+ 			"finger[%d]:%d - x:%d y:%d z:%d wx:%d wy:%d\n",
+ 			slot, object->type, le16_to_cpu(object->pos_x),
+ 			le16_to_cpu(object->pos_y), object->z,
+ 			object->wx, object->wy);
 	}
 }
 
@@ -523,6 +565,8 @@ static int rmi_f12_probe(struct rmi_function *fn)
 	struct input_dev *input_dev;
 	struct rmi_device *rmi_dev = fn->rmi_dev;
 	struct rmi_driver *driver = rmi_dev->driver;
+	
+	dev_dbg(&fn->dev, "%s called.\n", __func__);
 
 	f12 = devm_kzalloc(&fn->dev, sizeof(struct f12_data), GFP_KERNEL);
 	if (!f12)
@@ -552,6 +596,18 @@ static int rmi_f12_probe(struct rmi_function *fn)
 		dev_err(&fn->dev, "Finger data registers are missing!\n");
 		retval = -ENODEV;
 		goto error_free_data;
+	}
+	
+	if (rmi_has_register(&f12->desc.control, F12_REPORT_ENABLES_REG)) {
+		u16 addr = fn->fd.control_base_addr + rmi_register_offset(&f12->desc.control, F12_REPORT_ENABLES_REG);
+		u8 enables = F12_REPORT_DEFAULT;
+		dev_dbg(&fn->dev, "Writing enables %#04x to %#06x.\n", enables, addr);
+		retval = rmi_write(rmi_dev, addr, enables);
+		if (retval < 0) {
+			dev_err(&fn->dev, "Failed to write F12 enables, code: %d.\n",
+				retval);
+			return retval;
+		}
 	}
 
 	f12->buf_size = rmi_register_size(&f12->desc.data, F12_FINGER_DATA_REG);

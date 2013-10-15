@@ -157,6 +157,7 @@ static int enable_sensor(struct rmi_device *rmi_dev)
 					rmi_transport->irq_thread : rmi_irq_thread,
 				data->irq_flags,
 				dev_name(&rmi_dev->dev), rmi_transport);
+		dev_dbg(&rmi_dev->dev, "request_threaded_irq() returned %d.\n", retval);
 		if (retval)
 			return retval;
 	} else {
@@ -166,6 +167,10 @@ static int enable_sensor(struct rmi_device *rmi_dev)
 	}
 
 	data->enabled = true;
+	
+	if (pdata->attn_gpio)
+		dev_dbg(&rmi_dev->dev, "Sensor enabled, attn gpio is %d.\n", 
+			 gpio_get_value(pdata->attn_gpio));
 
 	if (pdata->attn_gpio && !pdata->level_triggered &&
 		    gpio_get_value(pdata->attn_gpio) == pdata->attn_polarity)
@@ -1032,7 +1037,10 @@ static int rmi_driver_probe(struct device *dev)
 	}
 
 	if (pdata->attn_gpio) {
-		data->irq = gpio_to_irq(pdata->attn_gpio);
+		if (pdata->attn_irq)
+			data->irq = pdata->attn_irq;
+		else
+			data->irq = gpio_to_irq(pdata->attn_gpio);
 		if (pdata->level_triggered) {
 			data->irq_flags = IRQF_ONESHOT |
 				((pdata->attn_polarity == RMI_ATTN_ACTIVE_HIGH)
@@ -1130,12 +1138,12 @@ static int rmi_driver_probe(struct device *dev)
 		enable_sensor(rmi_dev);
 	}
 
-	if (IS_ENABLED(CONFIG_RMI4_DEV) && pdata->attn_gpio) {
+	if (pdata->attn_gpio) {
 		retval = gpio_request(pdata->attn_gpio, GPIO_LABEL);
 		if (retval)
 			dev_warn(dev, "WARNING: Failed to request ATTN gpio %d, code=%d.\n",
 				 pdata->attn_gpio, retval);
-		else {
+		else if (IS_ENABLED(CONFIG_RMI4_DEV)) {
 			retval = gpio_export(pdata->attn_gpio, false);
 			if (retval)
 				dev_warn(dev, "WARNING: Failed to export ATTN gpio %d, code=%d!\n",
