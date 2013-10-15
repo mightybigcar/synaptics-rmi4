@@ -519,7 +519,7 @@ static int create_function_dev(struct rmi_device *rmi_dev,
 
 	pdata = to_rmi_platform_data(rmi_dev);
 
-	dev_dbg(dev, "Initializing F%02X for %s.\n", pdt->function_number,
+	dev_dbg(dev, "Initializing F%02X device for %s.\n", pdt->function_number,
 		pdata->sensor_name);
 
 	fn = kzalloc(sizeof(struct rmi_function), GFP_KERNEL);
@@ -819,7 +819,6 @@ static int rmi_scan_pdt(struct rmi_device *rmi_dev)
 
 			retval = create_function_dev(rmi_dev,
 					&pdt_entry, &irq_count, page_start);
-
 			if (retval)
 				goto error_exit;
 		}
@@ -985,6 +984,8 @@ static int rmi_driver_probe(struct device *dev)
 
 	if (!rmi_is_physical_device(dev))
 		return -ENODEV;
+	
+	dev_dbg(dev, "%s called.\n", __func__);
 
 	rmi_dev = to_rmi_device(dev);
 	rmi_driver = to_rmi_driver(dev->driver);
@@ -1052,10 +1053,12 @@ static int rmi_driver_probe(struct device *dev)
 		}
 		dev_dbg(dev, "Mapped IRQ %d for GPIO %d.\n",
 			data->irq, pdata->attn_gpio);
-	} else
-		data->poll_interval = ktime_set(0,
-			(pdata->poll_interval_ms ? pdata->poll_interval_ms :
-			DEFAULT_POLL_INTERVAL_MS) * 1000);
+	} else {
+		ulong poll_ns = (pdata->poll_interval_ms ? pdata->poll_interval_ms :
+			DEFAULT_POLL_INTERVAL_MS) * 1000 * 1000;
+		dev_dbg(dev, "Poll interval will be %lu ns.\n", poll_ns);
+		data->poll_interval = ktime_set(0, poll_ns);
+	}
 
 	retval = rmi_count_irqs(rmi_dev);
 	if (retval) {
