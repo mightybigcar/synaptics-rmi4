@@ -1047,7 +1047,7 @@ static int rmi_driver_probe(struct device *dev)
 	} else
 		data->poll_interval = ktime_set(0,
 			(pdata->poll_interval_ms ? pdata->poll_interval_ms :
-			DEFAULT_POLL_INTERVAL_MS) * 1000);
+			DEFAULT_POLL_INTERVAL_MS) * 1000 * 1000);
 
 	retval = rmi_count_irqs(rmi_dev);
 	if (retval) {
