@@ -11,6 +11,7 @@ obj-$(CONFIG_RMI4_F54) += rmi_f54.o
 
 # Transport layers
 obj-$(CONFIG_RMI4_I2C) += rmi_i2c.o
+obj-$(CONFIG_RMI4_SPI) += rmi_spi.o
 
 obj-$(CONFIG_RMI4_HID) += rmi_hid.o
 
