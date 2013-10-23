@@ -757,7 +757,7 @@ static int rmi_spi_check_device(struct rmi_transport_device *rmi_transport)
 }
 
 
-static int __devinit rmi_spi_probe(struct spi_device *spi)
+static int rmi_spi_probe(struct spi_device *spi)
 {
 	struct rmi_transport_device *rmi_transport;
 	struct rmi_spi_data *data;
@@ -883,7 +883,7 @@ err_gpio:
 	return retval;
 }
 
-static int __devexit rmi_spi_remove(struct spi_device *spi)
+static int rmi_spi_remove(struct spi_device *spi)
 {
 	struct rmi_transport_device *xport = dev_get_drvdata(&spi->dev);
 	struct rmi_device_platform_data *pd = spi->dev.platform_data;
@@ -914,7 +914,7 @@ static struct spi_driver rmi_spi_driver = {
 	},
 	.id_table	= rmi_id,
 	.probe		= rmi_spi_probe,
-	.remove		= __devexit_p(rmi_spi_remove),
+	.remove		= rmi_spi_remove,
 };
 
 static int __init rmi_spi_init(void)
