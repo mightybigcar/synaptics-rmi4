@@ -241,6 +241,11 @@ struct rmi_device_platform_data_spi {
 	int (*cs_assert) (const void *cs_assert_data, const bool assert);
 };
 
+struct rmi_device_sensor_vendor {
+	int vendor_id;
+	const char * vendor_name;
+};
+
 /**
  * struct rmi_device_platform_data - system specific configuration info.
  *
@@ -328,6 +333,8 @@ struct rmi_device_platform_data {
 
 #ifdef CONFIG_RMI4_FWLIB
 	char *firmware_name;
+	u8 multi_sensor_vendor_count;
+	struct rmi_device_sensor_vendor * sensor_vendor_id;
 #endif
 
 #ifdef	CONFIG_PM

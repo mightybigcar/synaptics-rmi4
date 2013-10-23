@@ -33,6 +33,7 @@
 #define F34_READ_CONFIG_BLOCK     0x5
 #define F34_WRITE_CONFIG_BLOCK    0x6
 #define F34_ERASE_CONFIG          0x7
+#define F34_READ_SENSOR_ID        0x8
 #define F34_ENABLE_FLASH_PROG     0xf
 
 #define F34_STATUS_IN_PROGRESS    0xff

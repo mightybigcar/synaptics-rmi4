@@ -29,6 +29,8 @@
 
 #define MAX_FIRMWARE_ID_LEN 10
 
+#define SENSOR_ID_PIN  0 /*A0*/
+
 extern int read_f01_properties(struct rmi_function *fn, struct rmi_device *rmi_dev,
 				struct f01_basic_properties *props, u16 query_addr,
 				struct device *dev);
@@ -77,6 +79,7 @@ struct reflash_data {
 	const u8 *lockdown_data;
 	unsigned int lockdown_size;
 	char *firmware_name;
+	bool sensor_id;
 };
 
 enum flash_area {
@@ -633,6 +636,80 @@ static void reflash_config(struct reflash_data *data)
         }
 }
 
+static int read_sensor_id(struct reflash_data *data, u16 *sensor_id)
+{
+	int retval;
+	struct rmi_device *rmi_dev = data->rmi_dev;
+	u8 sensor_id_mask[2];
+	u8 sensor_id_pullup_mask[2];
+	u16 pin_mask;
+	u8 sensor_id_val[2];
+
+	pin_mask = 0x0001 << SENSOR_ID_PIN;
+
+	sensor_id_mask[0] = sensor_id_pullup_mask[0]
+			= pin_mask & 0x00FF;
+	sensor_id_mask[1] = sensor_id_pullup_mask[1]
+			= (pin_mask & 0xFF00) >> 8;
+	/* go into bootloader mode */
+	enter_flash_programming(data);
+
+	/* set sensor mask */
+	retval = rmi_write_block(data->rmi_dev, data->f34_pdt->data_base_addr + 2,
+			sensor_id_mask, ARRAY_SIZE(sensor_id_mask));
+	if (retval < 0) {
+		dev_err(&data->rmi_dev->dev, "Failed to write sensor id mask. Code=%d.\n",
+			retval);
+		return retval;
+	}
+
+	/* set sensor pullup mask */
+	retval = rmi_write_block(data->rmi_dev, data->f34_pdt->data_base_addr + 4,
+			sensor_id_pullup_mask, ARRAY_SIZE(sensor_id_pullup_mask));
+	if (retval < 0) {
+		dev_err(&data->rmi_dev->dev, "Failed to write sensor id pullup mask. Code=%d.\n",
+			retval);
+		return retval;
+	}
+
+	/* send command to read sensor id */
+	retval = write_f34_command(data, F34_READ_SENSOR_ID);
+	if (retval < 0)
+		return retval;
+
+	retval = wait_for_idle(data, F34_ENABLE_WAIT_MS);
+	if (retval) {
+		dev_err(&rmi_dev->dev, "Did not reach idle state after %d ms. Code: %d.\n",
+			F34_IDLE_WAIT_MS, retval);
+		return retval;
+	}
+
+	/* read sensor id from data register*/
+	retval = rmi_read_block(data->rmi_dev, data->f34_pdt->data_base_addr + 6,
+		sensor_id_val, 2);
+	if (retval < 0) {
+		dev_err(&data->rmi_dev->dev, "Failed to read sensor id. Code=%d.\n",
+			retval);
+		return retval;
+	}
+
+	*sensor_id = (u16)sensor_id_val[1] <<8 | sensor_id_val[0];
+	/* go back to UI mode */
+	reset_device(data);
+
+	retval = read_f01_status(data);
+	if (retval) {
+		dev_err(&data->rmi_dev->dev,
+			"Failed to read F01 status. Code: %d.\n", retval);
+		return retval;
+	}
+
+	if (RMI_F01_STATUS_BOOTLOADER(data->device_status))
+		dev_warn(&rmi_dev->dev, "Device reports to be in flash programming mode.\n");
+
+	return retval;
+}
+
 /* Returns false if the firmware should not be reflashed.
  */
 static bool go_nogo(struct reflash_data *data, struct image_header *header)
@@ -753,7 +830,27 @@ static bool go_nogo(struct reflash_data *data, struct image_header *header)
                         data->config_data[2],
                         data->config_data[3]);
 
-        imageConfigID =  extract_u32_be(data->config_data);
+
+
+	if(data->sensor_id != (config_id[0] & 0x01)) {
+		dev_warn(&data->rmi_dev->dev,
+			"device config id %d does not match device sensor id %d (pin %d)\n",
+			config_id[0],
+			data->sensor_id,
+			SENSOR_ID_PIN);
+                flash_area = UI_FIRMWARE;
+                goto exit;
+        }
+
+        if (data->sensor_id != (data->config_data[0] & 0x01)) {
+                dev_warn(&data->rmi_dev->dev,
+			".img sensor id %d does not match device sensor id %d (pin %d)\n",
+			data->config_data[0],
+			data->sensor_id,
+			SENSOR_ID_PIN);
+	}
+
+	imageConfigID =  extract_u32_be(data->config_data);
 
         dev_info(&data->rmi_dev->dev, "device config id %d, .img config id %d\n",
                                 deviceConfigID, imageConfigID);
@@ -790,8 +887,11 @@ void rmi4_fw_update(struct rmi_device *rmi_dev,
 	struct image_header *header = NULL;
 	struct pdt_properties pdt_props;
 	struct reflash_data *data = NULL;
+	unsigned short sensor_id_array;
 	enum flash_area flash_area;
 	struct rmi_device_platform_data *pdata = to_rmi_platform_data(rmi_dev);
+	struct rmi_device_sensor_vendor * sensor_vendor;
+	int i;
 
 	getnstimeofday(&start);
 
@@ -834,12 +934,14 @@ void rmi4_fw_update(struct rmi_device *rmi_dev,
 			retval);
 		goto done;
 	}
+
 	retval = read_f34_queries(data);
 	if (retval) {
 		dev_err(&rmi_dev->dev, "F34 queries failed, code = %d.\n",
 			retval);
 		goto done;
 	}
+
 	if (img_name && strlen(img_name))
 		snprintf(data->firmware_name, NAME_BUFFER_SIZE, "rmi4/%s.img",
 			img_name);
@@ -848,11 +950,36 @@ void rmi4_fw_update(struct rmi_device *rmi_dev,
 			pdata->firmware_name);
 	else {
 		if (!strlen(data->product_id)) {
-			dev_err(&rmi_dev->dev, "Product ID is missing or empty - will not reflash.\n");
+			dev_err(&rmi_dev->dev,
+				"Product ID is missing or empty - will not reflash.\n");
 			goto done;
 		}
 		snprintf(data->firmware_name, NAME_BUFFER_SIZE, "rmi4/%s.img",
 			data->product_id);
+	}
+
+	/* Check sensor id */
+	if (pdata->multi_sensor_vendor_count) {
+		retval = read_sensor_id(data, &sensor_id_array);
+		if (retval != 0)
+			dev_err(&rmi_dev->dev, "Read sensor id failed, code = %d\n",
+				retval);
+		else {
+			data->sensor_id = sensor_id_array & (0x0001 << SENSOR_ID_PIN);
+			for (i = 0; i < pdata->multi_sensor_vendor_count; ++i) {
+				sensor_vendor = &pdata->sensor_vendor_id[i];
+				if (data->sensor_id == sensor_vendor->vendor_id) {
+					char * suffix = strstr(data->firmware_name, "img");
+					if (suffix != NULL)
+						snprintf(suffix,
+							NAME_BUFFER_SIZE - (suffix
+							- data->firmware_name),
+							"%s.img", sensor_vendor->vendor_name);
+				}
+			}
+
+		}
+
 	}
 
 	dev_info(&rmi_dev->dev, "Requesting %s.\n", data->firmware_name);
