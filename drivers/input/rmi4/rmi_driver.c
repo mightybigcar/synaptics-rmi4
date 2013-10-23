@@ -119,7 +119,7 @@ static void disable_sensor(struct rmi_device *rmi_dev)
 	if (!data->enabled)
 		return;
 
-	if (!data->irq)
+	if (rmi_dev->xport->info.proto_type != RMI_PROTOCOL_HID && !data->irq)
 		disable_polling(rmi_dev);
 
 	if (rmi_dev->xport->disable_device)
@@ -159,7 +159,7 @@ static int enable_sensor(struct rmi_device *rmi_dev)
 				dev_name(&rmi_dev->dev), rmi_transport);
 		if (retval)
 			return retval;
-	} else {
+	} else if (rmi_transport->info.proto_type != RMI_PROTOCOL_HID) {
 		retval = enable_polling(rmi_dev);
 		if (retval < 0)
 			return retval;
@@ -167,8 +167,9 @@ static int enable_sensor(struct rmi_device *rmi_dev)
 
 	data->enabled = true;
 
-	if (pdata->attn_gpio && !pdata->level_triggered &&
-		    gpio_get_value(pdata->attn_gpio) == pdata->attn_polarity)
+	if (rmi_transport->info.proto_type != RMI_PROTOCOL_HID
+		&& pdata->attn_gpio && !pdata->level_triggered
+		&& gpio_get_value(pdata->attn_gpio) == pdata->attn_polarity)
 		retval = process_interrupt_requests(rmi_dev);
 
 	return retval;
@@ -288,12 +289,14 @@ static int process_interrupt_requests(struct rmi_device *rmi_dev)
 	struct rmi_function *entry;
 	int error;
 
-	error = rmi_read_block(rmi_dev,
-				data->f01_dev->fd.data_base_addr + 1,
-				data->irq_status, data->num_of_irq_regs);
-	if (error < 0) {
-		dev_err(dev, "Failed to read irqs, code=%d\n", error);
-		return error;
+	if (!rmi_dev->xport->attn_data) {
+		error = rmi_read_block(rmi_dev,
+					data->f01_dev->fd.data_base_addr + 1,
+					data->irq_status, data->num_of_irq_regs);
+		if (error < 0) {
+			dev_err(dev, "Failed to read irqs, code=%d\n", error);
+			return error;
+		}
 	}
 
 	mutex_lock(&data->irq_mutex);
@@ -330,8 +333,13 @@ static int rmi_driver_set_input_params(struct rmi_device *rmi_dev,
 				struct input_dev *input)
 {
 	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
+	struct rmi_device_platform_data *pdata = to_rmi_platform_data(rmi_dev);
 
-	input->name = SYNAPTICS_INPUT_DEVICE_NAME;
+	if (pdata->f11_sensor_data &&
+		pdata->f11_sensor_data[0].sensor_type == rmi_sensor_touchpad)
+		input->name = SYNAPTICS_TOUCHPAD_INPUT_DEVICE_NAME;
+	else
+		input->name = SYNAPTICS_TOUCHSCREEN_INPUT_DEVICE_NAME;
 	input->id.vendor  = SYNAPTICS_VENDOR_ID;
 	input->id.product = data->board;
 	input->id.version = data->rev;
@@ -583,7 +591,6 @@ static void check_bootloader_mode(struct rmi_device *rmi_dev,
 	if (RMI_F01_STATUS_BOOTLOADER(device_status))
 		dev_warn(&rmi_dev->dev,
 			 "WARNING: RMI4 device is in bootloader mode!\n");
-
 }
 
 /*
@@ -652,7 +659,7 @@ static int rmi_device_reflash(struct rmi_device *rmi_dev)
 		return -ENODEV;
 	}
 
-#ifdef CONFIG_RMI4_FWLIBG
+#ifdef CONFIG_RMI4_FWLIB
 	if (has_f34)
 		rmi4_fw_update(rmi_dev, &f01_pdt, &f34_pdt);
 	else
@@ -712,6 +719,8 @@ static int rmi_device_reset(struct rmi_device *rmi_dev)
 					return error;
 				}
 				mdelay(pdata->reset_delay_ms);
+				if (rmi_dev->xport->post_reset)
+					rmi_dev->xport->post_reset(rmi_dev->xport);
 				return 0;
 			}
 		}
@@ -958,13 +967,68 @@ static void rmi_driver_late_resume(struct early_suspend *h)
 
 static int rmi_driver_remove(struct rmi_device *rmi_dev)
 {
+	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
+
 	disable_sensor(rmi_dev);
+	if (data->input)
+		input_unregister_device(data->input);
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	unregister_early_suspend(&rmi_dev->early_suspend_handler);
 #endif
 
 	rmi_free_function_list(rmi_dev);
+	return 0;
+}
+
+static int create_unified_input_device(struct rmi_driver_data * data)
+{
+	struct rmi_device *rmi_dev = data->rmi_dev;
+	struct rmi_driver * driver = rmi_dev->driver;
+	struct rmi_device_platform_data *pdata = to_rmi_platform_data(rmi_dev);
+	int rc;
+
+	if (!pdata->unified_input_device)
+		return 0;
+
+	data->input = input_allocate_device();
+	if (!data->input) {
+		return -ENOMEM;
+	}
+
+	if (driver->set_input_params) {
+		rc = driver->set_input_params(rmi_dev, data->input);
+		if (rc < 0) {
+			dev_err(&rmi_dev->dev, "%s: Error in setting input device.\n",
+				__func__);
+			return rc;
+		}
+	}
+
+	return 0;
+}
+
+static int register_unified_input_device(struct rmi_driver_data * data, struct device * dev)
+{
+	int rc;
+	struct input_dev * input_dev = data->input;
+	struct rmi_device_platform_data *pdata = to_rmi_platform_data(data->rmi_dev);
+
+	if (!pdata->unified_input_device)
+		return 0;
+
+	sprintf(data->input_phys, "%s/input0",
+		dev_name(dev));
+	input_dev->phys = data->input_phys;
+	input_dev->dev.parent = dev;
+
+	rc = input_register_device(input_dev);
+	if (rc < 0) {
+		input_free_device(input_dev);
+		data->input = NULL;
+		return rc;
+	}
+
 	return 0;
 }
 
@@ -995,6 +1059,10 @@ static int rmi_driver_probe(struct device *dev)
 	INIT_LIST_HEAD(&data->function_list);
 	data->rmi_dev = rmi_dev;
 	dev_set_drvdata(&rmi_dev->dev, data);
+	retval = create_unified_input_device(data);
+	if (retval < 0)
+		return retval;
+
 	mutex_init(&data->pdt_mutex);
 
 	/* Right before a warm boot, the sensor might be in some unusual state,
@@ -1014,6 +1082,7 @@ static int rmi_driver_probe(struct device *dev)
 	 */
 	if (!pdata->reset_delay_ms)
 		pdata->reset_delay_ms = DEFAULT_RESET_DELAY_MS;
+
 	retval = rmi_device_reset(rmi_dev);
 	if (retval)
 		dev_warn(dev, "RMI initial reset failed! Continuing in spite of this.\n");
@@ -1090,6 +1159,12 @@ static int rmi_driver_probe(struct device *dev)
 		goto err_free_data;
 	}
 
+	retval = register_unified_input_device(data, &rmi_dev->dev);
+	if (retval < 0) {
+		dev_err(dev, "failed to register input device. Code: %d\n", retval);
+		goto err_free_data;
+	}
+
 	if (!data->f01_dev) {
 		dev_err(dev, "missing F01 device!\n");
 		retval = -EINVAL;
@@ -1155,9 +1230,12 @@ static int rmi_driver_probe(struct device *dev)
 		}
 	}
 
+	rmi_dev->xport->probe_succeeded = true;
 	return 0;
 
  err_free_data:
+ 	if (data->input)
+		input_unregister_device(data->input);
 	rmi_free_function_list(rmi_dev);
 	return retval;
 }
@@ -1181,6 +1259,7 @@ struct rmi_driver rmi_physical_driver = {
 	.enable = enable_sensor,
 	.disable = disable_sensor,
 	.remove = rmi_driver_remove,
+	.process = process_interrupt_requests,
 };
 
 int __init rmi_register_sensor_driver(void)

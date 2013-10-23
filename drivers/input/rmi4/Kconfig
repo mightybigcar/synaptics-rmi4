@@ -32,11 +32,38 @@ config RMI4_DEBUG
 
 	  If unsure, say N.
 
+config RMI4_FWLIB
+        bool "RMI4 Firmware Update"
+        depends on RMI4_CORE
+        help
+          Say Y here to enable in-kernel firmware update capability.
+
+          The RMI4 core will check for firmware updates during the device
+          initialization process, and apply the updates if appropriate.
+
 config RMI4_I2C
 	tristate "RMI4 I2C Support"
 	depends on RMI4_CORE && I2C
 	help
 	  Say Y here if you want to support RMI4 devices connected to an I2C
+	  bus.
+
+	  If unsure, say Y.
+
+config RMI4_SPI
+	tristate "RMI4 SPI Support"
+	depends on RMI4_CORE && SPI
+	help
+	  Say Y here if you want to support RMI4 devices connected to a SPI
+	  bus.
+
+	  If unsure, say Y.
+
+config RMI4_HID
+	tristate "RMI4 HID Support"
+	depends on RMI4_CORE && HID
+	help
+	  Say Y here if you want to support RMI4 devices connected to a HID
 	  bus.
 
 	  If unsure, say Y.
@@ -79,3 +106,50 @@ config RMI4_VIRTUAL_BUTTON
 	  certain RMI4 touch sensors.
 
 	  This works only if your sensor supports F11 gestures.
+
+config RMI4_F12
+	tristate "RMI4 Function 12 (2D pointing)"
+	depends on RMI4_CORE
+	help
+	  Say Y here if you want to add support for RMI4 function 12.
+
+	  Function 12 provides 2D multifinger pointing for touchscreens and
+	  touchpads.  For sensors that support relative pointing, F11 also
+	  provides mouse input.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called rmi-f12.
+
+config RMI4_F30
+        tristate "RMI4 Function 30 (GPIO LED)"
+        depends on RMI4_CORE
+        help
+          Say Y here if you want to add support for RMI4 function 30.
+
+          Function 30 provides GPIO LED support for sensors.
+
+          To compile this driver as a module, choose M here: the
+          module will be called rmi-f30.
+
+config RMI4_F34
+        tristate "RMI4 Function 34 (device reflash)"
+        depends on RMI4_CORE
+        help
+          Say Y here if you want to add support for RMI4 function 34.
+
+          Function 34 provides firmware upgrade capability for your sensor.
+
+          To compile this driver as a module, choose M here: the
+          module will be called rmi-f34.
+
+config RMI4_F54
+        tristate "RMI4 Function 54 (analog diagnostics)"
+        depends on RMI4_CORE
+        help
+          Say Y here if you want to add support for RMI4 function 54.
+
+          Function 54 provides access to various diagnostic features in
+          certain RMI4 touch sensors.
+
+          To compile this driver as a module, choose M here: the
+          module will be called rmi-f54.

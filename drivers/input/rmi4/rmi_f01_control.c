@@ -1044,7 +1044,9 @@ static struct rmi_control_handler_data *f01_ctl_attach(struct device *dev, void 
 	if (retval)
 		dev_warn(dev, "Failed to create F01 sysfs structures.\n");
 
+#ifdef CONFIG_RMI4_DEBUG
 	rmi_f01_setup_debugfs(ctl_data);
+#endif
 
 	return &ctl_data->hdata;
 }

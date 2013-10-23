@@ -477,6 +477,17 @@ struct f11_2d_data {
 	s8	*scroll_zones;
 };
 
+struct f11_abs_pos_data {
+        int x;
+        int y;
+        int z;
+        int w_x;
+        int w_y;
+        int w_min;
+        int w_max;
+        int orientation;
+};
+
 /**
  * @axis_align - controls parameters that are useful in system prototyping
  * and bring up.
@@ -499,24 +510,30 @@ struct f11_2d_data {
  * @input_phys_mouse - buffer for the relative phys name for this sensor.
  */
 struct f11_2d_sensor {
-	struct rmi_f11_2d_axis_alignment axis_align;
+	struct rmi_2d_axis_alignment axis_align;
 	struct f11_2d_sensor_queries sens_query;
 	struct f11_2d_data data;
 	u16 max_x;
 	u16 max_y;
 	u8 nbr_fingers;
 	u8 *data_pkt;
+	int abs_size;
 	int pkt_size;
+	struct f11_abs_pos_data *abs_pos_data;
 	u8 sensor_index;
 	u8 *button_map;
 	struct rmi_f11_virtualbutton_map virtual_buttons;
 	u32 type_a;
-	enum rmi_f11_sensor_type sensor_type;
+	enum rmi_sensor_type sensor_type;
 	struct input_dev *input;
 	struct input_dev *mouse_input;
-	struct rmi_function *fn;
-	char input_phys[NAME_BUFFER_SIZE];
 	char input_phys_mouse[NAME_BUFFER_SIZE];
+	char input_phys[NAME_BUFFER_SIZE];
+	struct rmi_function *fn;
+	u8 suppress;
+	u8 suppress_highw;
+	u8 x_mm;
+	u8 y_mm;
 };
 
 /** Data pertaining to F11 in general.  For per-sensor data, see struct

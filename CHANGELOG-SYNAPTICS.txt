@@ -1,3 +1,8 @@
+Updates for driver version 1.8 (rmihid branch)
+--------------------------------------------
+* Add support for accessing RMI4 registers over HID for use in HID/I2C and HID/USB devices which
+support the RMI over HID Vendor Specific Top Level Collection.
+
 Updates for driver version 1.8 (in progress)
 --------------------------------------------
 

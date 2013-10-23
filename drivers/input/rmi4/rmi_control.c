@@ -20,10 +20,10 @@ static struct rmi_control_handler_data *get_handler_data(struct device *dev,
 
 	list_for_each_entry(hdata, &handler->list, list) {
 		if (hdata->dev == dev)
-			break;
+			return hdata;
 	}
 
-	return hdata;
+	return NULL;
 }
 
 static int rmi_ctl_cleanup(struct device *dev, void *data)
@@ -86,7 +86,6 @@ static int rmi_ctl_notifier_call(struct notifier_block *nb,
 		break;
 	case BUS_NOTIFY_BOUND_DRIVER:
 		dev_dbg(dev, "%s: driver bound.\n", __func__);
-		break;
 		return rmi_ctl_attach(dev, handler);
 	case BUS_NOTIFY_UNBIND_DRIVER:
 		dev_dbg(dev, "%s: driver going away.\n", __func__);

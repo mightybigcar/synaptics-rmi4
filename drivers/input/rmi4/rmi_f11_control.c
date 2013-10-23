@@ -773,11 +773,112 @@ static ssize_t f11_rezero_store(struct device *dev,
 	return count;
 }
 
+static ssize_t f11_suppress_store(struct device *dev,
+                                        struct device_attribute *attr,
+                                        const char *buf, size_t count)
+{
+        struct rmi_function *fn = NULL;
+        struct f11_data *data;
+        unsigned int suppress;
+        int i;
+
+        fn = to_rmi_function(dev);
+        if (fn == NULL)
+                return -ENODEV;
+
+        data = fn->data;
+        if (data == NULL)
+                return -ENODEV;
+
+        if (sscanf(buf, "%u", &suppress) != 1)
+                return -EINVAL;
+        if (suppress > 1)
+                return -EINVAL;
+
+        for (i = 0; i < (data->nr_sensors + 1); i++)
+                data->sensors[i].suppress = suppress;
+
+        return count;
+}
+
+static ssize_t f11_suppress_show(struct device *dev,
+                                        struct device_attribute *attr,
+                                        char *buf)
+{
+        struct rmi_function *fn;
+        struct f11_data *data;
+
+        fn = to_rmi_function(dev);
+        if (fn == NULL)
+                return -ENODEV;
+
+        data = fn->data;
+        if (data == NULL)
+                return -ENODEV;
+
+        return snprintf(buf, PAGE_SIZE, "%u\n",
+                        data->sensors[0].suppress);
+}
+
+static ssize_t f11_suppress_highw_store(struct device *dev,
+                                                        struct device_attribute *attr,
+                                                        const char *buf, size_t count)
+{
+        struct rmi_function *fn = NULL;
+        struct f11_data *data;
+        unsigned int suppress_highw;
+        int i;
+
+        fn = to_rmi_function(dev);
+        if (fn == NULL)
+                return -ENODEV;
+
+        data = fn->data;
+        if (data == NULL)
+                return -ENODEV;
+
+        if (sscanf(buf, "%u", &suppress_highw) != 1)
+                return -EINVAL;
+        if (suppress_highw > 15)
+                return -EINVAL;
+
+        for (i = 0; i < (data->nr_sensors + 1); i++)
+                data->sensors[i].suppress_highw = suppress_highw;
+
+        return count;
+}
+
+static ssize_t f11_suppress_highw_show(struct device *dev,
+                                        struct device_attribute *attr,
+                                        char *buf)
+{
+        struct rmi_function *fn;
+        struct f11_data *data;
+
+        fn = to_rmi_function(dev);
+        if (fn == NULL)
+                return -ENODEV;
+
+        data = fn->data;
+        if (data == NULL)
+                return -ENODEV;
+
+        return snprintf(buf, PAGE_SIZE, "%u\n",
+                        data->sensors[0].suppress_highw);
+}
+
 static struct device_attribute dev_attr_rezero =
 	__ATTR(rezero, RMI_WO_ATTR, NULL, f11_rezero_store);
+static struct device_attribute dev_attr_suppress =
+        __ATTR(suppress, RMI_RW_ATTR, f11_suppress_show, f11_suppress_store);
+static struct device_attribute dev_attr_suppress_highw =
+        __ATTR(suppress_highw, RMI_RW_ATTR, f11_suppress_highw_show,
+                f11_suppress_highw_store);
 
 static struct attribute *attrs[] = {
 	&dev_attr_rezero.attr,
+	&dev_attr_suppress.attr,
+	&dev_attr_suppress_highw.attr,
 	NULL,
 };
 static struct attribute_group fn11_attrs = GROUP(attrs);
@@ -815,13 +916,18 @@ static struct rmi_control_handler_data *f11_ctl_attach(struct device *dev, void 
 	/* Increase with one since number of sensors is zero based */
 	for (i = 0; i < (f11->nr_sensors + 1); i++) {
 		ctl_data->sensor_data[i].sensor = &f11->sensors[i];
+#ifdef CONFIG_RMI4_DEBUG
 		rmi_f11_setup_sensor_debugfs(&ctl_data->sensor_data[i]);
+#endif
 	}
 
 	if (sysfs_create_group(&fn->dev.kobj, &fn11_attrs) < 0) {
 		dev_warn(&fn->dev, "Failed to create query sysfs files.");
 	}
+
+#ifdef CONFIG_RMI4_DEBUG
 	rmi_f11_setup_debugfs(ctl_data);
+#endif
 
 	return &ctl_data->handler_data;
 }
