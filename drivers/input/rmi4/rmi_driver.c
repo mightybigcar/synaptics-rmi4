@@ -657,7 +657,7 @@ static int rmi_device_reflash(struct rmi_device *rmi_dev)
 		return -ENODEV;
 	}
 
-#ifdef CONFIG_RMI4_FWLIBG
+#ifdef CONFIG_RMI4_FWLIB
 	if (has_f34)
 		rmi4_fw_update(rmi_dev, &f01_pdt, &f34_pdt);
 	else

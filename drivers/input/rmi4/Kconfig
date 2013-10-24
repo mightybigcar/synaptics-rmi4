@@ -32,6 +32,14 @@ config RMI4_DEBUG
 
 	  If unsure, say N.
 
+config RMI4_FWLIB
+	bool "RMI4 device reflash"
+	depends on RMI4_CORE
+	help
+	  Say Y here to enable boot time reflash of RMI4 sensor firmware.
+
+	  If unsure, say N.
+
 config RMI4_I2C
 	tristate "RMI4 I2C Support"
 	depends on RMI4_CORE && I2C

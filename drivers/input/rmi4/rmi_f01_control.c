@@ -214,14 +214,14 @@ static ssize_t query_write(struct file *filp,
 	case 17:
 		if (props->has_package_id_query)
 			dev_dbg(&data->fn->dev, "Package ID %#06x, rev %#06x.\n",
-				 f01->package_id, f01->package_rev);
+				 props->package_id, props->package_rev);
 		else
 			dev_dbg(&data->fn->dev, "Not present.\n");
 		break;
 	case 18:
 		if (props->has_build_id_query)
 			dev_dbg(&data->fn->dev, "FW build ID: %#08x (%u).\n",
-				f01->build_id, f01->build_id);
+				props->build_id, props->build_id);
 		else
 			dev_dbg(&data->fn->dev, "Not present.\n");
 		break;
@@ -338,7 +338,7 @@ static ssize_t rmi_fn_01_productid_show(struct device *dev,
 	struct rmi_function *fn = to_rmi_function(dev);
 	struct f01_data *data = fn->data;
 
-	return snprintf(buf, PAGE_SIZE, "%s\n", data->product_id);
+	return snprintf(buf, PAGE_SIZE, "%s\n", data->properties.product_id);
 }
 
 static ssize_t rmi_fn_01_manufacturer_show(struct device *dev,

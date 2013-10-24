@@ -92,6 +92,9 @@ struct f01_basic_properties {
 	char dom[11]; /* YYYY/MM/DD + '\0' */
 	u8 product_id[RMI_PRODUCT_ID_LENGTH + 1];
 	u16 productinfo;
+	u16 package_id;
+	u16 package_rev;
+	u32 build_id;
 
 	/* These are meaningful only if has_lts is true. */
 	u8 slave_asic_rows;
@@ -141,6 +144,9 @@ struct f01_basic_properties {
 	/* Query 46 */
 	char fw_revision[RMI_FW_REVISION_LENGTH + 1];
 };
+
+int rmi_f01_read_properties(struct rmi_device *rmi_dev, u16 query_base_addr,
+			    struct f01_basic_properties *props);
 
 /** The status code field reports the most recent device status event.
  * @no_error - should be self explanatory.
@@ -246,11 +252,7 @@ struct f01_data {
 
 	struct f01_basic_properties properties;
 	u8 serialization[F01_SERIALIZATION_SIZE];
-	u8 product_id[RMI_PRODUCT_ID_LENGTH+1];
 
-	u16 package_id;
-	u16 package_rev;
-	u32 build_id;
 
 	u16 interrupt_enable_addr;
 	u16 doze_interval_addr;
