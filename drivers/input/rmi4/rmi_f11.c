@@ -64,8 +64,7 @@ static int get_tool_type(struct f11_2d_sensor *sensor, u8 finger_state)
 static void rmi_f11_rel_pos_report(struct f11_2d_sensor *sensor, u8 n_finger)
 {
 	struct f11_2d_data *data = &sensor->data;
-	struct rmi_2d_axis_alignment *axis_align = &sensor->axis_align;
-	struct rmi_device_platform_data *pdata = to_rmi_platform_data(sensor->fn->rmi_dev);
+	struct rmi_f11_2d_axis_alignment *axis_align = &sensor->axis_align;
 	s8 x, y;
 	s8 temp;
 
@@ -88,63 +87,52 @@ static void rmi_f11_rel_pos_report(struct f11_2d_sensor *sensor, u8 n_finger)
 	if (x || y) {
 		input_report_rel(sensor->input, REL_X, x);
 		input_report_rel(sensor->input, REL_Y, y);
-		if (!pdata->unified_input_device) {
-			input_report_rel(sensor->mouse_input, REL_X, x);
-			input_report_rel(sensor->mouse_input, REL_Y, y);
-		}
+		input_report_rel(sensor->mouse_input, REL_X, x);
+		input_report_rel(sensor->mouse_input, REL_Y, y);
 	}
-	if (!pdata->unified_input_device)
-		input_sync(sensor->mouse_input);
+	input_sync(sensor->mouse_input);
 }
 
-static int rmi_f11_abs_pos_report(struct f11_2d_sensor *sensor,
+static void rmi_f11_abs_pos_report(struct f11_data *f11,
+				   struct f11_2d_sensor *sensor,
 				   u8 finger_state, u8 n_finger)
 {
 	struct f11_2d_data *data = &sensor->data;
-	struct rmi_2d_axis_alignment *axis_align = &sensor->axis_align;
-	struct f11_abs_pos_data *abs;
+	struct rmi_f11_2d_axis_alignment *axis_align = &sensor->axis_align;
+	int x, y, z;
+	int w_x, w_y, w_max, w_min, orient;
 	int temp;
-	int send_report = 1;
 	u8 abs_base = n_finger * RMI_F11_ABS_BYTES;
 
+	x = y = z = w_x = w_y = w_min = w_max = orient = 0;
 
 	if (finger_state) {
-		abs = &sensor->abs_pos_data[n_finger];
-		abs->x = (data->abs_pos[abs_base] << 4) |
+		x = (data->abs_pos[abs_base] << 4) |
 			(data->abs_pos[abs_base + 2] & 0x0F);
-		abs->y = (data->abs_pos[abs_base + 1] << 4) |
+		y = (data->abs_pos[abs_base + 1] << 4) |
 			(data->abs_pos[abs_base + 2] >> 4);
-		abs->w_x = data->abs_pos[abs_base + 3] & 0x0F;
-		abs->w_y = data->abs_pos[abs_base + 3] >> 4;
-		abs->w_max = max(abs->w_x, abs->w_y);
-		abs->w_min = min(abs->w_x, abs->w_y);
-		abs->z = data->abs_pos[abs_base + 4];
-
-		if (sensor->suppress_highw > 0
-			&& sensor->suppress_highw <= abs->w_max)
-		{
-			dev_dbg(&sensor->fn->dev,
-				"Suppressing finger (%d)  because of high W (%d)\n",
-					n_finger, abs->w_max);
-			send_report = 0;
-		}
+		w_x = data->abs_pos[abs_base + 3] & 0x0F;
+		w_y = data->abs_pos[abs_base + 3] >> 4;
+		w_max = max(w_x, w_y);
+		w_min = min(w_x, w_y);
+		z = data->abs_pos[abs_base + 4];
 
 		if (axis_align->swap_axes) {
-			temp = abs->x;
-			abs->x = abs->y;
-			abs->y = temp;
-			temp = abs->w_x;
-			abs->w_x = abs->w_y;
-			abs->w_y = temp;
+			temp = x;
+			x = y;
+			y = temp;
+			temp = w_x;
+			w_x = w_y;
+			w_y = temp;
 		}
 
-		abs->orientation = abs->w_x > abs->w_y ? 1 : 0;
+		orient = w_x > w_y ? 1 : 0;
 
 		if (axis_align->flip_x)
-			abs->x = max(sensor->max_x - abs->x, 0);
+			x = max(sensor->max_x - x, 0);
 
 		if (axis_align->flip_y)
-			abs->y = max(sensor->max_y - abs->y, 0);
+			y = max(sensor->max_y - y, 0);
 
 		/*
 		* here checking if X offset or y offset are specified is
@@ -154,37 +142,24 @@ static int rmi_f11_abs_pos_report(struct f11_2d_sensor *sensor,
 		* or we could get funny values that are outside
 		* clipping boundaries.
 		*/
-		abs->x += axis_align->offset_X;
-		abs->y += axis_align->offset_Y;
-		abs->x =  max(axis_align->clip_X_low, abs->x);
-		abs->y =  max(axis_align->clip_Y_low, abs->y);
+		x += axis_align->offset_X;
+		y += axis_align->offset_Y;
+		x =  max(axis_align->clip_X_low, x);
+		y =  max(axis_align->clip_Y_low, y);
 		if (axis_align->clip_X_high)
-			abs->x = min(axis_align->clip_X_high, abs->x);
+			x = min(axis_align->clip_X_high, x);
 		if (axis_align->clip_Y_high)
-			abs->y =  min(axis_align->clip_Y_high, abs->y);
+			y =  min(axis_align->clip_Y_high, y);
 
-#if 0
-		dev_dbg(&sensor->fn->dev,
-			"finger[%d]:%d - x:%d y:%d z:%d w_max:%d w_min:%d\n",
-			n_finger, finger_state, abs->x, abs->y, abs->z, abs->w_max, abs->w_min);
-#endif
 	}
-
-	return send_report;
-}
-
-static void rmi_f11_send_abs_pos_report(struct f11_2d_sensor *sensor,
-					u8 finger_state, u8 n_finger)
-{
-	struct f11_abs_pos_data *abs = &sensor->abs_pos_data[n_finger];
 
 	/* Some UIs ignore W of zero, so we fudge it to 1 for pens.  This
 	 * only appears to be an issue when reporting pens, not plain old
 	 * fingers. */
 	if (IS_ENABLED(CONFIG_RMI4_F11_PEN) &&
 			get_tool_type(sensor, finger_state) == MT_TOOL_PEN) {
-		abs->w_max = max(1, abs->w_max);
-		abs->w_min = max(1, abs->w_min);
+		w_max = max(1, w_max);
+		w_min = max(1, w_min);
 	}
 
 	if (sensor->type_a) {
@@ -198,24 +173,19 @@ static void rmi_f11_send_abs_pos_report(struct f11_2d_sensor *sensor,
 	}
 
 	if (finger_state) {
-		input_report_abs(sensor->input, ABS_MT_PRESSURE, abs->z);
-		input_report_abs(sensor->input, ABS_MT_TOUCH_MAJOR, abs->w_max);
-		input_report_abs(sensor->input, ABS_MT_TOUCH_MINOR, abs->w_min);
-		input_report_abs(sensor->input, ABS_MT_ORIENTATION, abs->orientation);
-		input_report_abs(sensor->input, ABS_MT_POSITION_X, abs->x);
-		input_report_abs(sensor->input, ABS_MT_POSITION_Y, abs->y);
-#if 0
+		input_report_abs(sensor->input, ABS_MT_PRESSURE, z);
+		input_report_abs(sensor->input, ABS_MT_TOUCH_MAJOR, w_max);
+		input_report_abs(sensor->input, ABS_MT_TOUCH_MINOR, w_min);
+		input_report_abs(sensor->input, ABS_MT_ORIENTATION, orient);
+		input_report_abs(sensor->input, ABS_MT_POSITION_X, x);
+		input_report_abs(sensor->input, ABS_MT_POSITION_Y, y);
 		dev_dbg(&sensor->fn->dev,
 			"finger[%d]:%d - x:%d y:%d z:%d w_max:%d w_min:%d\n",
-			n_finger, finger_state, abs->x, abs->y, abs->z, abs->w_max, abs->w_min);
-#endif
+			n_finger, finger_state, x, y, z, w_max, w_min);
 	}
 	/* MT sync between fingers */
 	if (sensor->type_a)
 		input_mt_sync(sensor->input);
-
-	if (sensor->sensor_type == rmi_sensor_touchpad)
-		input_mt_report_pointer_emulation(sensor->input, true);
 }
 
 #ifdef CONFIG_RMI4_VIRTUAL_BUTTON
@@ -275,11 +245,6 @@ static void rmi_f11_finger_handler(struct f11_data *f11,
 	u8 finger_state;
 	u8 finger_pressed_count;
 	u8 i;
-	u8 report_fingers = 1;
-	int ret_val;
-
-	if (sensor->suppress)
-		return;
 
 	for (i = 0, finger_pressed_count = 0; i < sensor->nbr_fingers; i++) {
 		/* Possible of having 4 fingers per f_state register */
@@ -292,24 +257,11 @@ static void rmi_f11_finger_handler(struct f11_data *f11,
 			finger_pressed_count++;
 		}
 
-		if (sensor->data.abs_pos) {
-			ret_val = rmi_f11_abs_pos_report(sensor, finger_state, i);
-			if (!ret_val)
-				report_fingers = 0;
+		if (sensor->data.abs_pos)
+			rmi_f11_abs_pos_report(f11, sensor, finger_state, i);
 
-		}
-
-		if (sensor->sensor_type != rmi_sensor_touchpad && sensor->data.rel_pos)
+		if (sensor->data.rel_pos)
 			rmi_f11_rel_pos_report(sensor, i);
-	}
-	
-	/* Only send abs packets when no contact exceeds the high W threshold */
-	if (sensor->data.abs_pos && report_fingers) {
-		for (i = 0; i < sensor->nbr_fingers; i++) {
-			finger_state = (f_state[i / 4] >> (2 * (i % 4))) &
-						FINGER_STATE_MASK;
-			rmi_f11_send_abs_pos_report(sensor, finger_state, i);
-		}
 	}
 
 	input_report_key(sensor->input, BTN_TOUCH, finger_pressed_count);
@@ -331,10 +283,8 @@ static int f11_2d_construct_data(struct f11_2d_sensor *sensor)
 
 	sensor->pkt_size = DIV_ROUND_UP(sensor->nbr_fingers, 4);
 
-	if (query->has_abs) {
+	if (query->has_abs)
 		sensor->pkt_size += (sensor->nbr_fingers * 5);
-		sensor->abs_size = sensor->pkt_size;
-	}
 
 	if (query->has_rel)
 		sensor->pkt_size +=  (sensor->nbr_fingers * 2);
@@ -369,9 +319,6 @@ static int f11_2d_construct_data(struct f11_2d_sensor *sensor)
 	if (query->has_abs) {
 		data->abs_pos = &sensor->data_pkt[i];
 		i += (sensor->nbr_fingers * RMI_F11_ABS_BYTES);
-
-		sensor->abs_pos_data = kzalloc(sensor->nbr_fingers
-			* sizeof(struct f11_abs_pos_data), GFP_KERNEL);
 	}
 
 	if (query->has_rel) {
@@ -694,18 +641,15 @@ static void f11_set_abs_params(struct rmi_function *fn, int index)
 	struct f11_data *f11 = fn->data;
 	struct f11_2d_sensor *sensor = &f11->sensors[index];
 	struct input_dev *input = sensor->input;
-	int device_x_max = le16_to_cpu(*(f11->dev_controls.ctrl0_9 + 6) |
-				((*(f11->dev_controls.ctrl0_9 + 7) & 0x0F) << 8));
-	int device_y_max = le16_to_cpu(*(f11->dev_controls.ctrl0_9 + 8) |
-				((*(f11->dev_controls.ctrl0_9 + 9) & 0x0F) << 8));
+	int device_x_max = le16_to_cpu(*(f11->dev_controls.ctrl0_9 + 6));
+	int device_y_max = le16_to_cpu(*(f11->dev_controls.ctrl0_9 + 8));
 	int x_min, x_max, y_min, y_max;
 	unsigned int input_flags;
-	int res_x, res_y;
 
 	/* We assume touchscreen unless demonstrably a touchpad or specified
 	 * as a touchpad in the platform data
 	 */
-	if (sensor->sensor_type == rmi_sensor_touchpad ||
+	if (sensor->sensor_type == rmi_f11_sensor_touchpad ||
 			(sensor->sens_query.has_info2 &&
 				!sensor->sens_query.is_clear))
 		input_flags = INPUT_PROP_POINTER;
@@ -738,10 +682,6 @@ static void f11_set_abs_params(struct rmi_function *fn, int index)
 	dev_dbg(&fn->dev, "Set ranges X=[%d..%d] Y=[%d..%d].",
 			x_min, x_max, y_min, y_max);
 
-	input_set_abs_params(input, ABS_X, x_min, x_max, 0, 0);
-	input_set_abs_params(input, ABS_Y, y_min, y_max, 0, 0);
-	input_set_abs_params(input, ABS_PRESSURE, 0, DEFAULT_MAX_ABS_MT_PRESSURE, 0, 0);
-
 	input_set_abs_params(input, ABS_MT_PRESSURE, 0,
 			DEFAULT_MAX_ABS_MT_PRESSURE, 0, 0);
 	input_set_abs_params(input, ABS_MT_TOUCH_MAJOR,
@@ -758,20 +698,8 @@ static void f11_set_abs_params(struct rmi_function *fn, int index)
 			x_min, x_max, 0, 0);
 	input_set_abs_params(input, ABS_MT_POSITION_Y,
 			y_min, y_max, 0, 0);
-
-	if (sensor->x_mm && sensor->y_mm) {
-		res_x = (x_max - x_min) / sensor->x_mm;
-		res_y = (y_max - y_min) / sensor->y_mm;
-
-		input_abs_set_res(input, ABS_X, res_x);
-		input_abs_set_res(input, ABS_Y, res_y);
-
-		input_abs_set_res(input, ABS_MT_POSITION_X, res_x);
-		input_abs_set_res(input, ABS_MT_POSITION_Y, res_y);
-	}
-
 	if (!sensor->type_a)
-		input_mt_init_slots(input, sensor->nbr_fingers, 0);
+		input_mt_init_slots(input, sensor->nbr_fingers);
 	if (IS_ENABLED(CONFIG_RMI4_F11_PEN) && sensor->sens_query.has_pen)
 		input_set_abs_params(input, ABS_MT_TOOL_TYPE,
 				     0, MT_TOOL_MAX, 0, 0);
@@ -844,10 +772,6 @@ static int rmi_f11_initialize(struct rmi_function *fn)
 			sensor->type_a = pdata->f11_sensor_data[i].type_a;
 			sensor->sensor_type =
 					pdata->f11_sensor_data[i].sensor_type;
-			sensor->suppress_highw =
-					pdata->f11_sensor_data[i].suppress_highw;
-			sensor->x_mm = pdata->f11_sensor_data[i].x_mm;
-			sensor->y_mm = pdata->f11_sensor_data[i].y_mm;
 		}
 
 		rc = rmi_read_block(rmi_dev,
@@ -939,11 +863,10 @@ static int rmi_f11_register_devices(struct rmi_function *fn)
 	struct f11_data *f11 = fn->data;
 	struct input_dev *input_dev;
 	struct input_dev *input_dev_mouse;
-	struct rmi_driver *driver = rmi_dev->driver;
-	struct rmi_device_platform_data *pdata = to_rmi_platform_data(rmi_dev);
-	int i;
 	struct rmi_driver_data *driver_data = dev_get_drvdata(&rmi_dev->dev);
+	struct rmi_driver *driver = rmi_dev->driver;
 	int sensors_itertd = 0;
+	int i;
 	int rc;
 	int board, version;
 
@@ -953,31 +876,27 @@ static int rmi_f11_register_devices(struct rmi_function *fn)
 	for (i = 0; i < (f11->nr_sensors + 1); i++) {
 		struct f11_2d_sensor *sensor = &f11->sensors[i];
 		sensors_itertd = i;
-		if (pdata->unified_input_device) {
-			input_dev = driver_data->input;
-			sensor->input = input_dev;
-		} else {
-			input_dev = input_allocate_device();
-			if (!input_dev) {
-				rc = -ENOMEM;
+		input_dev = input_allocate_device();
+		if (!input_dev) {
+			rc = -ENOMEM;
+			goto error_unregister;
+		}
+
+		sensor->input = input_dev;
+		if (driver->set_input_params) {
+			rc = driver->set_input_params(rmi_dev, input_dev);
+			if (rc < 0) {
+				dev_err(&fn->dev,
+				"%s: Error in setting input device.\n",
+				__func__);
 				goto error_unregister;
 			}
-			sensor->input = input_dev;
-			if (driver->set_input_params) {
-				rc = driver->set_input_params(rmi_dev, input_dev);
-				if (rc < 0) {
-					dev_err(&fn->dev,
-						"%s: Error in setting input device.\n",
-						__func__);
-					goto error_unregister;
-				}
-			}
-			sprintf(sensor->input_phys, "%s.abs%d/input0",
-				dev_name(&fn->dev), i);
-			input_dev->phys = sensor->input_phys;
-			input_dev->dev.parent = &rmi_dev->dev;
-			input_set_drvdata(input_dev, f11);
-		} 
+		}
+		sprintf(sensor->input_phys, "%s.abs%d/input0",
+			dev_name(&fn->dev), i);
+		input_dev->phys = sensor->input_phys;
+		input_dev->dev.parent = &rmi_dev->dev;
+		input_set_drvdata(input_dev, f11);
 
 		set_bit(EV_SYN, input_dev->evbit);
 		set_bit(EV_ABS, input_dev->evbit);
@@ -985,25 +904,22 @@ static int rmi_f11_register_devices(struct rmi_function *fn)
 
 		f11_set_abs_params(fn, i);
 
-		if (sensor->sensor_type != rmi_sensor_touchpad && sensor->sens_query.has_rel) {
+		if (sensor->sens_query.has_rel) {
 			set_bit(EV_REL, input_dev->evbit);
 			set_bit(REL_X, input_dev->relbit);
 			set_bit(REL_Y, input_dev->relbit);
 		}
-
-		if (!pdata->unified_input_device) {
-			rc = input_register_device(input_dev);
-			if (rc < 0) {
-				input_free_device(input_dev);
-				sensor->input = NULL;
-				goto error_unregister;
-			}
+		rc = input_register_device(input_dev);
+		if (rc < 0) {
+			input_free_device(input_dev);
+			sensor->input = NULL;
+			goto error_unregister;
 		}
 
 		if (IS_ENABLED(CONFIG_RMI4_VIRTUAL_BUTTON))
 			register_virtual_buttons(fn, sensor);
 
-		if (!pdata->unified_input_device && sensor->sens_query.has_rel) {
+		if (sensor->sens_query.has_rel) {
 			/*create input device for mouse events  */
 			input_dev_mouse = input_allocate_device();
 			if (!input_dev_mouse) {
@@ -1045,33 +961,20 @@ static int rmi_f11_register_devices(struct rmi_function *fn)
 			set_bit(BTN_RIGHT, input_dev_mouse->keybit);
 		}
 
-		if (sensor->sensor_type == rmi_sensor_touchpad) {
-			set_bit(EV_KEY, input_dev->evbit);
-			set_bit(BTN_LEFT, input_dev->keybit);
-
-			set_bit(BTN_TOOL_FINGER, input_dev->keybit);
-			set_bit(BTN_TOOL_DOUBLETAP, input_dev->keybit);
-			set_bit(BTN_TOOL_TRIPLETAP, input_dev->keybit);
-			set_bit(BTN_TOOL_QUADTAP, input_dev->keybit);
-			set_bit(BTN_TOOL_QUINTTAP, input_dev->keybit);
-		}
-
 	}
 
 	return 0;
 
 error_unregister:
-	if (!pdata->unified_input_device) {
-		for (; sensors_itertd > 0; sensors_itertd--) {
-			if (f11->sensors[sensors_itertd].input) {
-				if (f11->sensors[sensors_itertd].mouse_input) {
-					input_unregister_device(
-				   		f11->sensors[sensors_itertd].mouse_input);
-					f11->sensors[sensors_itertd].mouse_input = NULL;
-				}
-				input_unregister_device(f11->sensors[i].input);
-				f11->sensors[i].input = NULL;
+	for (; sensors_itertd > 0; sensors_itertd--) {
+		if (f11->sensors[sensors_itertd].input) {
+			if (f11->sensors[sensors_itertd].mouse_input) {
+				input_unregister_device(
+				   f11->sensors[sensors_itertd].mouse_input);
+				f11->sensors[sensors_itertd].mouse_input = NULL;
 			}
+			input_unregister_device(f11->sensors[i].input);
+			f11->sensors[i].input = NULL;
 		}
 	}
 
@@ -1081,15 +984,13 @@ error_unregister:
 static void rmi_f11_free_devices(struct rmi_function *fn)
 {
 	struct f11_data *f11 = fn->data;
-	struct rmi_device_platform_data *pdata = to_rmi_platform_data(fn->rmi_dev);
 	int i;
-	if (!pdata->unified_input_device) {
-		for (i = 0; i < (f11->nr_sensors + 1); i++) {
-			if (f11->sensors[i].input)
-				input_unregister_device(f11->sensors[i].input);
-			if (f11->sensors[i].mouse_input)
-				input_unregister_device(f11->sensors[i].mouse_input);
-		}
+
+	for (i = 0; i < (f11->nr_sensors + 1); i++) {
+		if (f11->sensors[i].input)
+			input_unregister_device(f11->sensors[i].input);
+		if (f11->sensors[i].mouse_input)
+			input_unregister_device(f11->sensors[i].mouse_input);
 	}
 }
 
@@ -1122,21 +1023,13 @@ int rmi_f11_attention(struct rmi_function *fn,
 	f11->report_count++;
 
 	for (i = 0; i < f11->nr_sensors + 1; i++) {
-		if (rmi_dev->xport->attn_data) {
-			memcpy(f11->sensors[0].data_pkt,
-				rmi_dev->xport->attn_data,
-				f11->sensors[i].abs_size);
-			rmi_dev->xport->attn_data += f11->sensors[i].abs_size;
-			rmi_dev->xport->attn_size -= f11->sensors[i].abs_size;
-		} else {
-			error = rmi_read_block(rmi_dev,
-					data_base_addr + data_base_addr_offset,
-					f11->sensors[i].data_pkt,
-					f11->sensors[i].pkt_size);
-			if (error < 0)
-				return error;
-		}
-	
+		error = rmi_read_block(rmi_dev,
+				data_base_addr + data_base_addr_offset,
+				f11->sensors[i].data_pkt,
+				f11->sensors[i].pkt_size);
+		if (error < 0)
+			return error;
+
 		rmi_f11_finger_handler(f11, &f11->sensors[i]);
 		rmi_f11_virtual_button_handler(&f11->sensors[i]);
 		data_base_addr_offset += f11->sensors[i].pkt_size;

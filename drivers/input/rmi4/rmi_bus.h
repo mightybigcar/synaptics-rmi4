@@ -12,6 +12,7 @@
 
 #include <linux/kernel.h>
 #include <linux/device.h>
+#include <linux/earlysuspend.h>
 #include <linux/interrupt.h>
 #include <linux/input.h>
 #include <linux/list.h>
@@ -21,9 +22,6 @@
 #include <linux/wait.h>
 #include <linux/debugfs.h>
 #include <linux/rmi.h>
-#ifdef CONFIG_HAS_EARLYSUSPEND
-#include <linux/earlysuspend.h>
-#endif
 
 extern struct bus_type rmi_bus_type;
 
@@ -152,19 +150,11 @@ struct rmi_driver {
 	int (*enable)(struct rmi_device *rmi_dev);
 	void (*disable)(struct rmi_device *rmi_dev);
 	int (*remove)(struct rmi_device *rmi_dev);
-	int (*process)(struct rmi_device *rmi_dev);
 	void *data;
 };
 
 #define to_rmi_driver(d) \
 	container_of(d, struct rmi_driver, driver)
-
-enum rmi_protocol_type {
-        RMI_PROTOCOL_I2C = 0,
-        RMI_PROTOCOL_SPI = 1,
-        RMI_PROTOCOL_SMBUS = 2,
-        RMI_PROTOCOL_HID = 3,
-};
 
 /** struct rmi_transport_info - diagnostic information about the RMI transport,
  * used in the transport-info debugfs file.
@@ -180,7 +170,6 @@ enum rmi_protocol_type {
  */
 struct rmi_transport_info {
 	char *proto;
-	enum rmi_protocol_type proto_type;
 	long tx_count;
 	long tx_bytes;
 	long tx_errs;
@@ -217,14 +206,9 @@ struct rmi_transport_device {
 
 	int (*enable_device) (struct rmi_transport_device *xport);
 	void (*disable_device) (struct rmi_transport_device *xport);
-	void (*post_reset) (struct rmi_transport_device *xport);
 
 	irqreturn_t (*irq_thread)(int irq, void *p);
 	irqreturn_t (*hard_irq)(int irq, void *p);
-
-	void *attn_data;
-	int attn_size;
-	int probe_succeeded;
 
 	void *data;
 

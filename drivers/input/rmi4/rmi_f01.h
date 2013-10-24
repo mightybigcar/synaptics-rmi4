@@ -21,14 +21,8 @@
 #define _RMI_F01_H
 
 #define RMI_PRODUCT_ID_LENGTH    10
-#define RMI_PRODUCT_INFO_LENGTH   2
 
 #define RMI_DATE_CODE_LENGTH      3
-
-#define PRODUCT_ID_OFFSET 0x10
-#define PRODUCT_INFO_OFFSET 0x1E
-
-#define F01_RESET_MASK 0x01
 
 /* Force a firmware reset of the sensor */
 #define RMI_F01_CMD_DEVICE_RESET	1

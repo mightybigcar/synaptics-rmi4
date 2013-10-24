@@ -35,8 +35,11 @@ static struct dentry *rmi_bus_debugfs_root;
  * purpose. For example F11 is a 2D touch sensor while F10 is a generic
  * function present in every RMI device.
  */
+
 static void rmi_release_device(struct device *dev)
 {
+	struct rmi_device *rmi_dev = to_rmi_device(dev);
+	kfree(rmi_dev);
 }
 
 struct device_type rmi_device_type = {
@@ -45,7 +48,7 @@ struct device_type rmi_device_type = {
 };
 EXPORT_SYMBOL_GPL(rmi_device_type);
 
-#ifdef CONFIG_RMI4_DEBUG
+#if CONFIG_RMI4_DEBUG
 
 static void rmi_physical_setup_debugfs(struct rmi_device *rmi_dev)
 {
@@ -170,7 +173,7 @@ struct device_type rmi_function_type = {
 };
 EXPORT_SYMBOL_GPL(rmi_function_type);
 
-#ifdef CONFIG_RMI4_DEBUG
+#if CONFIG_RMI4_DEBUG
 
 static void rmi_function_setup_debugfs(struct rmi_function *fn)
 {

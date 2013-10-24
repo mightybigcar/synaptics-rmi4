@@ -276,9 +276,7 @@ static struct rmi_control_handler_data *driver_ctl_attach(struct device *dev, vo
 			dev_warn(dev, "Failed to create sysfs file bsr.\n");
 	}
 
-#ifdef CONFIG_RMI4_DEBUG
 	setup_debugfs(ctl_data);
-#endif
 
 	return &ctl_data->hdata;
 }

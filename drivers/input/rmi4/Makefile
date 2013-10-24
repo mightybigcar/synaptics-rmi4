@@ -5,22 +5,15 @@ rmi_core-$(CONFIG_RMI4_FWLIB) += rmi_fw_update.o
 
 # Function drivers
 obj-$(CONFIG_RMI4_F11) += rmi_f11.o
-obj-$(CONFIG_RMI4_F12) += rmi_f12.o
-obj-$(CONFIG_RMI4_F30) += rmi_f30.o
-obj-$(CONFIG_RMI4_F54) += rmi_f54.o
 
 # Transport layers
 obj-$(CONFIG_RMI4_I2C) += rmi_i2c.o
-obj-$(CONFIG_RMI4_SPI) += rmi_spi.o
-
-obj-$(CONFIG_RMI4_HID) += rmi_hid.o
 
 # Control modules (implementing sysfs and debugfs)
 
 ifeq ("$(CONFIG_RMI4_CONTROL)", "y")
 obj-$(CONFIG_RMI4_CORE) += rmi_control.o rmi_f01_control.o rmi_driver_control.o
 obj-$(CONFIG_RMI4_F11) += rmi_f11_control.o
-obj-$(CONFIG_RMI4_F12) += rmi_f12_control.o
 endif
 
 
