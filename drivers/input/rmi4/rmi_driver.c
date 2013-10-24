@@ -514,7 +514,7 @@ static int create_function_dev(struct rmi_device *rmi_dev,
 
 	pdata = to_rmi_platform_data(rmi_dev);
 
-	dev_dbg(dev, "Initializing F%02X for %s.\n", pdt->function_number,
+	dev_dbg(dev, "Initializing F%02X device for %s.\n", pdt->function_number,
 		pdata->sensor_name);
 
 	fn = kzalloc(sizeof(struct rmi_function), GFP_KERNEL);
@@ -652,7 +652,7 @@ static int rmi_device_reflash(struct rmi_device *rmi_dev)
 		return -ENODEV;
 	}
 
-#ifdef CONFIG_RMI4_FWLIBG
+#ifdef CONFIG_RMI4_FWLIB
 	if (has_f34)
 		rmi4_fw_update(rmi_dev, &f01_pdt, &f34_pdt);
 	else
@@ -814,7 +814,6 @@ static int rmi_scan_pdt(struct rmi_device *rmi_dev)
 
 			retval = create_function_dev(rmi_dev,
 					&pdt_entry, &irq_count, page_start);
-
 			if (retval)
 				goto error_exit;
 		}
@@ -1032,7 +1031,10 @@ static int rmi_driver_probe(struct device *dev)
 	}
 
 	if (pdata->attn_gpio) {
-		data->irq = gpio_to_irq(pdata->attn_gpio);
+		if (pdata->attn_irq)
+			data->irq = pdata->attn_irq;
+		else
+			data->irq = gpio_to_irq(pdata->attn_gpio);
 		if (pdata->level_triggered) {
 			data->irq_flags = IRQF_ONESHOT |
 				((pdata->attn_polarity == RMI_ATTN_ACTIVE_HIGH)
@@ -1044,10 +1046,12 @@ static int rmi_driver_probe(struct device *dev)
 		}
 		dev_dbg(dev, "Mapped IRQ %d for GPIO %d.\n",
 			data->irq, pdata->attn_gpio);
-	} else
-		data->poll_interval = ktime_set(0,
-			(pdata->poll_interval_ms ? pdata->poll_interval_ms :
-			DEFAULT_POLL_INTERVAL_MS) * 1000);
+	} else {
+		ulong poll_ns = (pdata->poll_interval_ms ? pdata->poll_interval_ms :
+			DEFAULT_POLL_INTERVAL_MS) * 1000 * 1000;
+		dev_dbg(dev, "Poll interval will be %lu ns.\n", poll_ns);
+		data->poll_interval = ktime_set(0, poll_ns);
+	}
 
 	retval = rmi_count_irqs(rmi_dev);
 	if (retval) {
@@ -1130,12 +1134,12 @@ static int rmi_driver_probe(struct device *dev)
 		enable_sensor(rmi_dev);
 	}
 
-	if (IS_ENABLED(CONFIG_RMI4_DEV) && pdata->attn_gpio) {
+	if (pdata->attn_gpio) {
 		retval = gpio_request(pdata->attn_gpio, GPIO_LABEL);
 		if (retval)
 			dev_warn(dev, "WARNING: Failed to request ATTN gpio %d, code=%d.\n",
 				 pdata->attn_gpio, retval);
-		else {
+		else if (IS_ENABLED(CONFIG_RMI4_DEV)) {
 			retval = gpio_export(pdata->attn_gpio, false);
 			if (retval)
 				dev_warn(dev, "WARNING: Failed to export ATTN gpio %d, code=%d!\n",

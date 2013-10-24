@@ -66,7 +66,6 @@ extern struct device_type rmi_device_type;
  *
  */
 struct rmi_function {
-
 	struct rmi_function_descriptor fd;
 	struct rmi_device *rmi_dev;
 	struct device dev;
@@ -223,6 +222,10 @@ struct rmi_transport_device {
  * @driver: Pointer to associated driver
  * @xport: Pointer to the transport interface
  * @debugfs_root: base for this particular sensor device.
+ * @interrupt_restore_block_flag: TBD
+ * @supports_device_wakeup: if true, the driver is configured to support
+ * wakeup events from the touch sensor, and the touch sensor is capable of
+ * generating such events.
  *
  */
 struct rmi_device {
@@ -234,6 +237,7 @@ struct rmi_device {
 
 	struct dentry *debugfs_root;
 	int    interrupt_restore_block_flag;
+	bool   supports_device_wakeup;
 
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
