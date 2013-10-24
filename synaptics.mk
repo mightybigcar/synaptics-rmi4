@@ -84,11 +84,11 @@ bump-extra:
 tarball: bump-extra
 	@echo Creating $(TAR_NAME)...
 	tar -czf /tmp/$(TAR_NAME) \
+		--exclude drivers/input/rmi4/rmi_f30.c drivers/input/rmi4/rmi_f31.c \
 		README-SYNAPTICS.txt CHANGELOG-SYNAPTICS.txt \
 		Documentation/ABI/testing/*-rmi4 Documentation/input/rmi*.txt \
 		drivers/input/Makefile drivers/input/Kconfig drivers/input/rmi4/Kconfig \
 		drivers/input/rmi4/Makefile drivers/input/rmi4/*.[ch] include/linux/rmi.h \
-		drivers/hid/hid-core.c \
 		arch/arm/configs/panda_defconfig arch/arm/mach-omap2/board-omap4panda.c \
 		include/linux/kconfig.h include/linux/input.h include/linux/device.h \
 		include/linux/i2c.h \
