@@ -242,7 +242,11 @@ static int wait_for_idle(struct reflash_data *data, int timeout_ms)
 		count++;
 		if (retval < 0)
 			continue;
-		else if (IS_IDLE(controls)) {
+		else if (retval == -EREMOTEIO) {
+			dev_err(&data->rmi_dev->dev, "Aborting %s do to Remote I/O error.\n",
+				__func__);
+			return retval;
+		} else if (IS_IDLE(controls)) {
 			if (!data->f34_controls.program_enabled) {
 				/** This works around a bug in certain device
 				 * firmwares, where the idle state is reached,
