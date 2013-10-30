@@ -1122,7 +1122,7 @@ static int rmi_driver_probe(struct device *dev)
 	if (retval) {
 		dev_err(dev, "IRQ counting for %s failed with code %d.\n",
 			pdata->sensor_name, retval);
-		goto err_free_data;
+		goto err_free_input_dev;
 	}
 
 	mutex_init(&data->irq_mutex);
@@ -1132,7 +1132,7 @@ static int rmi_driver_probe(struct device *dev)
 	if (!data->irq_status) {
 		dev_err(dev, "Failed to allocate irq_status.\n");
 		retval = -ENOMEM;
-		goto err_free_data;
+		goto err_free_input_dev;
 	}
 
 	data->current_irq_mask = devm_kzalloc(dev, data->num_of_irq_regs,
@@ -1140,7 +1140,7 @@ static int rmi_driver_probe(struct device *dev)
 	if (!data->current_irq_mask) {
 		dev_err(dev, "Failed to allocate current_irq_mask.\n");
 		retval = -ENOMEM;
-		goto err_free_data;
+		goto err_free_input_dev;
 	}
 
 	data->irq_mask_store = devm_kzalloc(dev,
@@ -1149,14 +1149,14 @@ static int rmi_driver_probe(struct device *dev)
 	if (!data->irq_mask_store) {
 		dev_err(dev, "Failed to allocate mask store.\n");
 		retval = -ENOMEM;
-		goto err_free_data;
+		goto err_free_input_dev;
 	}
 
 	retval = rmi_scan_pdt(rmi_dev);
 	if (retval) {
 		dev_err(dev, "PDT scan for %s failed with code %d.\n",
 			pdata->sensor_name, retval);
-		goto err_free_data;
+		goto err_free_input_dev;
 	}
 
 	retval = register_unified_input_device(data, &rmi_dev->dev);
@@ -1233,7 +1233,12 @@ static int rmi_driver_probe(struct device *dev)
 	rmi_dev->xport->probe_succeeded = true;
 	return 0;
 
- err_free_data:
+err_free_input_dev:
+	if (data->input) {
+		input_free_device(data->input);
+		data->input = NULL;
+	}
+err_free_data:
  	if (data->input)
 		input_unregister_device(data->input);
 	rmi_free_function_list(rmi_dev);
