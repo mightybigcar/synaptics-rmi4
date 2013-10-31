@@ -293,7 +293,6 @@ int __rmi_register_function_driver(struct rmi_function_driver *fn_drv,
 	driver->owner = owner;
 	driver->mod_name = mod_name;
 	driver->probe = rmi_function_probe;
-	driver->remove = rmi_function_remove;
 
 	error = driver_register(&fn_drv->driver);
 	if (error) {
