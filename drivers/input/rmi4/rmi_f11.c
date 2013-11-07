@@ -641,8 +641,15 @@ static void f11_set_abs_params(struct rmi_function *fn, int index)
 	struct f11_data *f11 = fn->data;
 	struct f11_2d_sensor *sensor = &f11->sensors[index];
 	struct input_dev *input = sensor->input;
+	/* These two lines are not doing what we want them to.  So we use
+	 * some shifts instead.
 	int device_x_max = le16_to_cpu(*(f11->dev_controls.ctrl0_9 + 6));
 	int device_y_max = le16_to_cpu(*(f11->dev_controls.ctrl0_9 + 8));
+	 */
+	int device_x_max = f11->dev_controls.ctrl0_9[6] |
+		((f11->dev_controls.ctrl0_9[7] & 0x0F) << 8);
+	int device_y_max = f11->dev_controls.ctrl0_9[8] |
+		((f11->dev_controls.ctrl0_9[9] & 0x0F) << 8);
 	int x_min, x_max, y_min, y_max;
 	unsigned int input_flags;
 
