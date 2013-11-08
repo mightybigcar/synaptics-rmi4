@@ -514,7 +514,7 @@ static int create_function_dev(struct rmi_device *rmi_dev,
 
 	pdata = to_rmi_platform_data(rmi_dev);
 
-	dev_dbg(dev, "Initializing F%02X for %s.\n", pdt->function_number,
+	dev_dbg(dev, "Initializing F%02X device for %s.\n", pdt->function_number,
 		pdata->sensor_name);
 
 	fn = kzalloc(sizeof(struct rmi_function), GFP_KERNEL);
@@ -652,7 +652,7 @@ static int rmi_device_reflash(struct rmi_device *rmi_dev)
 		return -ENODEV;
 	}
 
-#ifdef CONFIG_RMI4_FWLIBG
+#ifdef CONFIG_RMI4_FWLIB
 	if (has_f34)
 		rmi4_fw_update(rmi_dev, &f01_pdt, &f34_pdt);
 	else
@@ -814,7 +814,6 @@ static int rmi_scan_pdt(struct rmi_device *rmi_dev)
 
 			retval = create_function_dev(rmi_dev,
 					&pdt_entry, &irq_count, page_start);
-
 			if (retval)
 				goto error_exit;
 		}
