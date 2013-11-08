@@ -61,38 +61,6 @@ struct rmi_f11_2d_axis_alignment {
 	u8 delta_y_threshold;
 };
 
-/**
- * struct virtualbutton_map - describes rectangular areas of a 2D sensor that
- * will be used by the driver to generate button events.
- *
- * @x - the x position of the low order corner of the rectangle, in RMI4
- * position units.
- * @y - the y position of the low order corner of the rectangle, in RMI4
- * position units.
- * @width - the width of the rectangle, in RMI4 position units.
- * @height - the height of the rectangle, in RMI4 position units.
- * @code - the input subsystem key event code that will be generated when a
- * tap occurs within the rectangle.
- */
-struct virtualbutton_map {
-	u16 x;
-	u16 y;
-	u16 width;
-	u16 height;
-	u16 code;
-};
-
-/**
- * struct rmi_f11_virtualbutton_map - provides a list of virtual buttons for
- * a 2D sensor.
- *
- * @buttons - the number of entries in the map.
- * @map - an array of virtual button descriptions.
- */
-struct rmi_f11_virtualbutton_map {
-	u8 buttons;
-	struct virtualbutton_map *map;
-};
 
 /** This is used to override any hints an F11 2D sensor might have provided
  * as to what type of sensor it is.
@@ -113,8 +81,6 @@ enum rmi_f11_sensor_type {
 /**
  * struct rmi_f11_sensor_data - overrides defaults for a single F11 2D sensor.
  * @axis_align - provides axis alignment overrides (see above).
- * @virtual_buttons - describes areas of the touch sensor that will be treated
- *                    as buttons.
  * @type_a - all modern RMI F11 firmwares implement Multifinger Type B
  * protocol.  Set this to true to force MF Type A behavior, in case you find
  * an older sensor.
@@ -125,7 +91,6 @@ enum rmi_f11_sensor_type {
  */
 struct rmi_f11_sensor_data {
 	struct rmi_f11_2d_axis_alignment axis_align;
-	struct rmi_f11_virtualbutton_map virtual_buttons;
 	bool type_a;
 	enum rmi_f11_sensor_type sensor_type;
 };
