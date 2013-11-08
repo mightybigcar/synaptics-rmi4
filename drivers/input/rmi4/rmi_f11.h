@@ -228,8 +228,6 @@
  * @has_palm_det - the 2-D sensor notifies the host whenever a large conductive
  * object such as a palm or a cheek touches the 2-D sensor.
  * @has_rotate - rotation gesture detection is supported.
- * @has_touch_shapes - TouchShapes are supported.  A TouchShape is a fixed
- * rectangular area on the sensor that behaves like a capacitive button.
  * @has_scroll_zones - scrolling areas near the sensor edges are supported.
  * @has_individual_scroll_zones - if 1, then 4 scroll zones are supported;
  * if 0, then only two are supported.
@@ -254,10 +252,6 @@
  * @has_contact_geometry - the sensor supports the use of contact geometry to
  * map absolute X and Y target positions and registers F11_2D_Data18
  * through F11_2D_Data27 exist.
- *
- * Touch shape info (query 10) is present if has_touch_shapes is set.
- *
- * @nr_touch_shapes - the total number of touch shapes supported.
  *
  * Query 11 is present if the has_query11 bit is set in query 0.
  *
@@ -353,7 +347,6 @@ struct f11_2d_sensor_queries {
 	/* query 8 */
 	bool has_palm_det;
 	bool has_rotate;
-	bool has_touch_shapes;
 	bool has_scroll_zones;
 	bool has_individual_scroll_zones;
 	bool has_mf_scroll;
@@ -373,7 +366,7 @@ struct f11_2d_sensor_queries {
 	bool has_pen_filters;
 
 	/* Query 10 */
-	u8 nr_touch_shapes;
+	u8 f11_2d_query10;
 
 	/* Query 11. */
 	bool has_z_tuning;
@@ -462,7 +455,6 @@ struct f11_2d_ctrl {
  * @pinch   - pinch motion register (if present).
  * @flick   - flick distance X & Y, flick time (if present).
  * @rotate  - rotate motion and finger separation.
- * @shapes  - start of touch shapes bit mask (if present).
  * @multi_scroll - chiral deltas for X and Y (if present).
  * @scroll_zones - scroll deltas for 4 regions (if present).
  */
@@ -475,7 +467,6 @@ struct f11_2d_data {
 	s8	*pinch;
 	u8	*flick;
 	u8	*rotate;
-	u8	*shapes;
 	s8	*multi_scroll;
 	s8	*scroll_zones;
 };

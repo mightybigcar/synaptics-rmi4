@@ -188,21 +188,6 @@ static void rmi_f11_abs_pos_report(struct f11_data *f11,
 		input_mt_sync(sensor->input);
 }
 
-static void rmi_f11_shape_handler(struct f11_2d_sensor *sensor)
-{
-	u8 i;
-
-	if (!(sensor->data.gest_2[0] & RMI_F11_SHAPE))
-		return;
-
-	for (i = 0; i < sensor->sens_query.nr_touch_shapes; i++) {
-		bool pressed = !!(sensor->data.shapes[i / 8] & (1 << (i % 8)));
-		if (pressed)
-			dev_dbg(&sensor->fn->dev, "Shape %d pressed.\n", i);
-		// TODO: report this
-	}
-}
-
 static void rmi_f11_finger_handler(struct f11_data *f11,
 				   struct f11_2d_sensor *sensor)
 {
@@ -230,9 +215,6 @@ static void rmi_f11_finger_handler(struct f11_data *f11,
 	}
 
 	input_report_key(sensor->input, BTN_TOUCH, finger_pressed_count);
-
-	if (sensor->data.shapes)
-		rmi_f11_shape_handler(sensor);
 
 	input_sync(sensor->input);
 }
@@ -269,10 +251,6 @@ static int f11_2d_construct_data(struct f11_2d_sensor *sensor)
 		if (!query->has_rotate)
 			sensor->pkt_size--;
 	}
-
-	if (query->has_touch_shapes)
-		sensor->pkt_size +=
-			DIV_ROUND_UP(query->nr_touch_shapes + 1, 8);
 
 	sensor->data_pkt = kzalloc(sensor->pkt_size, GFP_KERNEL);
 	if (!sensor->data_pkt)
@@ -324,9 +302,6 @@ static int f11_2d_construct_data(struct f11_2d_sensor *sensor)
 			i += 2;
 		}
 	}
-
-	if (query->has_touch_shapes)
-		data->shapes = &sensor->data_pkt[i];
 
 	return 0;
 }
@@ -452,8 +427,6 @@ static int rmi_f11_get_query_parameters(struct rmi_device *rmi_dev,
 			!!(query_buf[1] & RMI_F11_HAS_PALM_DET);
 		sensor_query->has_rotate =
 			!!(query_buf[1] & RMI_F11_HAS_ROTATE);
-		sensor_query->has_touch_shapes =
-			!!(query_buf[1] & RMI_F11_HAS_TOUCH_SHAPES);
 		sensor_query->has_scroll_zones =
 			!!(query_buf[1] & RMI_F11_HAS_SCROLL_ZONES);
 		sensor_query->has_individual_scroll_zones =
@@ -492,17 +465,6 @@ static int rmi_f11_get_query_parameters(struct rmi_device *rmi_dev,
 			!!(query_buf[0] & RMI_F11_HAS_PEN_HOVER_DISCRIMINATION);
 		sensor_query->has_pen_filters =
 			!!(query_buf[0] & RMI_F11_HAS_PEN_FILTERS);
-
-		query_size++;
-	}
-
-	if (sensor_query->has_touch_shapes) {
-		rc = rmi_read(rmi_dev, query_base_addr + query_size, query_buf);
-		if (rc < 0)
-			return rc;
-
-		sensor_query->nr_touch_shapes = query_buf[0] &
-				RMI_F11_NR_TOUCH_SHAPES_MASK;
 
 		query_size++;
 	}
