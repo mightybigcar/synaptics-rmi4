@@ -509,7 +509,6 @@ struct f11_2d_sensor {
 	int pkt_size;
 	u8 sensor_index;
 	u8 *button_map;
-	struct rmi_f11_virtualbutton_map virtual_buttons;
 	u32 type_a;
 	enum rmi_f11_sensor_type sensor_type;
 	struct input_dev *input;

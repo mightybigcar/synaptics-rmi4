@@ -188,41 +188,6 @@ static void rmi_f11_abs_pos_report(struct f11_data *f11,
 		input_mt_sync(sensor->input);
 }
 
-#ifdef CONFIG_RMI4_VIRTUAL_BUTTON
-static int rmi_f11_virtual_button_handler(struct f11_2d_sensor *sensor)
-{
-	int i;
-	int x;
-	int y;
-	struct rmi_f11_virtualbutton_map *virtualbutton_map;
-	struct virtualbutton_map virtualbutton;
-
-	if (sensor->sens_query.has_gestures &&
-		(sensor->data.gest_1[0] & RMI_F11_SINGLE_TAP)) {
-		virtualbutton_map = &sensor->virtual_buttons;
-		x = (data->abs_pos[0] << 4) | (data->abs_pos[2] & 0x0F);
-		y = (data->abs_pos[0] << 4) | (data->abs_pos[2] >> 4);
-		for (i = 0; i < virtualbutton_map->buttons; i++) {
-			virtualbutton = virtualbutton_map->map[i];
-			if (x >= virtualbutton.x &&
-				x < (virtualbutton.x + virtualbutton.width) &&
-				y >= virtualbutton.y &&
-				y < (virtualbutton.y + virtualbutton.height)) {
-				input_report_key(sensor->input,
-					virtualbutton_map->map[i].code, 1);
-				input_report_key(sensor->input,
-					virtualbutton_map->map[i].code, 0);
-				input_sync(sensor->input);
-				return 0;
-			}
-		}
-	}
-	return 0;
-}
-#else
-#define rmi_f11_virtual_button_handler(sensor)
-#endif
-
 static void rmi_f11_shape_handler(struct f11_2d_sensor *sensor)
 {
 	u8 i;
@@ -774,8 +739,6 @@ static int rmi_f11_initialize(struct rmi_function *fn)
 		if (i < pdata->f11_sensor_count) {
 			sensor->axis_align =
 				pdata->f11_sensor_data[i].axis_align;
-			sensor->virtual_buttons =
-				pdata->f11_sensor_data[i].virtual_buttons;
 			sensor->type_a = pdata->f11_sensor_data[i].type_a;
 			sensor->sensor_type =
 					pdata->f11_sensor_data[i].sensor_type;
@@ -830,38 +793,6 @@ static int rmi_f11_initialize(struct rmi_function *fn)
 
 	mutex_init(&f11->dev_controls_mutex);
 	return 0;
-}
-
-static void register_virtual_buttons(struct rmi_function *fn,
-				     struct f11_2d_sensor *sensor) {
-	int j;
-
-	if (!sensor->sens_query.has_gestures)
-		return;
-	if (!sensor->virtual_buttons.buttons) {
-		dev_warn(&fn->dev, "No virtual button platform data for 2D sensor %d.\n",
-			 sensor->sensor_index);
-		return;
-	}
-	/* call devm_kcalloc when it will be defined in kernel */
-	sensor->button_map = devm_kzalloc(&fn->dev,
-			sensor->virtual_buttons.buttons,
-			GFP_KERNEL);
-	if (!sensor->button_map) {
-		dev_err(&fn->dev, "Failed to allocate the virtual button map.\n");
-		return;
-	}
-
-	/* manage button map using input subsystem */
-	sensor->input->keycode = sensor->button_map;
-	sensor->input->keycodesize = sizeof(u8);
-	sensor->input->keycodemax = sensor->virtual_buttons.buttons;
-
-	/* set bits for each button... */
-	for (j = 0; j < sensor->virtual_buttons.buttons; j++) {
-		sensor->button_map[j] =  sensor->virtual_buttons.map[j].code;
-		set_bit(sensor->button_map[j], sensor->input->keybit);
-	}
 }
 
 static int rmi_f11_register_devices(struct rmi_function *fn)
@@ -922,9 +853,6 @@ static int rmi_f11_register_devices(struct rmi_function *fn)
 			sensor->input = NULL;
 			goto error_unregister;
 		}
-
-		if (IS_ENABLED(CONFIG_RMI4_VIRTUAL_BUTTON))
-			register_virtual_buttons(fn, sensor);
 
 		if (sensor->sens_query.has_rel) {
 			/*create input device for mouse events  */
@@ -1038,7 +966,6 @@ int rmi_f11_attention(struct rmi_function *fn,
 			return error;
 
 		rmi_f11_finger_handler(f11, &f11->sensors[i]);
-		rmi_f11_virtual_button_handler(&f11->sensors[i]);
 		data_base_addr_offset += f11->sensors[i].pkt_size;
 	}
 

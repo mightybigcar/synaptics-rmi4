@@ -68,14 +68,3 @@ config RMI4_F11_PEN
 	  If your system is not recognizing pen touches and you know your
 	  sensor supports pen input, you probably want to turn this feature
 	  off.
-
-config RMI4_VIRTUAL_BUTTON
-	tristate "RMI4 Vitual Button"
-	depends on RMI4_F11
-	help
-	  Say Y here if you want to add support for RMI4 virtual button to F11.
-
-	  The virtual button feature implement the virtual button device in
-	  certain RMI4 touch sensors.
-
-	  This works only if your sensor supports F11 gestures.
