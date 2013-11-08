@@ -217,8 +217,6 @@ static int rmi_function_probe(struct device *dev)
 	struct rmi_function_driver *fn_drv;
 	struct rmi_function *fn = to_rmi_function(dev);
 
-	dev_dbg(dev, "%s called.\n", __func__);
-
 	fn_drv = to_rmi_function_driver(dev->driver);
 
 	if (fn_drv->probe)

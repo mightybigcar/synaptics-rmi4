@@ -94,7 +94,6 @@ static int enable_polling(struct rmi_device *rmi_dev)
 {
 	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
 
-	dev_dbg(&rmi_dev->dev, "Polling enabled.\n");
 	INIT_WORK(&data->poll_work, rmi_poll_work);
 	hrtimer_init(&data->poll_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	data->poll_timer.function = rmi_poll_timer;
@@ -107,7 +106,6 @@ static void disable_polling(struct rmi_device *rmi_dev)
 {
 	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
 
-	dev_dbg(&rmi_dev->dev, "Polling disabled.\n");
 	hrtimer_cancel(&data->poll_timer);
 	cancel_work_sync(&data->poll_work);
 }
@@ -607,7 +605,6 @@ static int rmi_device_reflash(struct rmi_device *rmi_dev)
 	struct rmi_device_platform_data *pdata;
 	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
 
-	dev_dbg(dev, "Initial reflash.\n");
 	pdata = to_rmi_platform_data(rmi_dev);
 	data->f01_bootloader_mode = false;
 	for (page = 0; (page <= RMI4_MAX_PAGE); page++) {
@@ -679,7 +676,6 @@ static int rmi_device_reset(struct rmi_device *rmi_dev)
 	bool done = false;
 	struct rmi_device_platform_data *pdata;
 
-	dev_dbg(dev, "Initial reset.\n");
 	pdata = to_rmi_platform_data(rmi_dev);
 	for (page = 0; (page <= RMI4_MAX_PAGE)  && !done; page++) {
 		u16 page_start = RMI4_PAGE_SIZE * page;

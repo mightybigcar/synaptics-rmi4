@@ -610,9 +610,6 @@ static void f11_set_abs_params(struct rmi_function *fn, int index)
 	else
 		y_max = device_y_max;
 
-	dev_dbg(&fn->dev, "Set ranges X=[%d..%d] Y=[%d..%d].",
-			x_min, x_max, y_min, y_max);
-
 	input_set_abs_params(input, ABS_MT_PRESSURE, 0,
 			DEFAULT_MAX_ABS_MT_PRESSURE, 0, 0);
 	input_set_abs_params(input, ABS_MT_TOUCH_MAJOR,
@@ -968,8 +965,6 @@ static int rmi_f11_remove(struct rmi_function *fn)
 static int rmi_f11_probe(struct rmi_function *fn)
 {
 	int rc;
-
-	dev_dbg(&fn->dev, "%s called.\n", __func__);
 
 	rc = rmi_f11_initialize(fn);
 	if (rc < 0)

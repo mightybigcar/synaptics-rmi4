@@ -316,7 +316,7 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 			u16 *val = (u16 *)info_buf;
 			data->build_id = le16_to_cpu(*val);
 			data->build_id += info_buf[2] * 65536;
-			dev_dbg(&fn->dev, "FW build ID: %#08x (%u).\n",
+			dev_info(&fn->dev, "FW build ID: %#08x (%u).\n",
 				data->build_id, data->build_id);
 		}
 	}
@@ -511,8 +511,6 @@ static int rmi_f01_probe(struct rmi_function *fn)
 	struct rmi_driver_data *driver_data =
 			dev_get_drvdata(&fn->rmi_dev->dev);
 	int error;
-
-	dev_dbg(&fn->dev, "%s called.\n", __func__);
 
 	error = rmi_f01_alloc_memory(fn, driver_data->num_of_irq_regs);
 	if (error < 0)

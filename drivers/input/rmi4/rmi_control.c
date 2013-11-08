@@ -56,8 +56,6 @@ static int rmi_ctl_attach(struct device *dev, void *data)
 			return 0;
 	}
 
-	dev_dbg(dev, "%s: control match with %s.\n", __func__, handler->name);
-
 	hdata = handler->attach(dev, handler);
 	if (!hdata) {
 		hdata->dev = dev;

@@ -276,7 +276,6 @@ static int rmi_i2c_probe(struct i2c_client *client,
 	}
 
 	if (pdata->gpio_config) {
-		dev_dbg(&client->dev, "Configuring GPIOs.\n");
 		retval = pdata->gpio_config(pdata->gpio_data, true);
 		if (retval < 0) {
 			dev_err(&client->dev, "Failed to configure GPIOs, code: %d.\n",
