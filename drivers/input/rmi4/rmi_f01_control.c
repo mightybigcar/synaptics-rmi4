@@ -471,8 +471,8 @@ static ssize_t rmi_fn_01_sleepmode_store(struct device *dev,
 	data->device_control.ctrl0 |= new_value;
 
 	retval = rmi_write_block(fn->rmi_dev, fn->fd.control_base_addr,
-				 &data->device_control.ctrl0,
-			  sizeof(data->device_control.ctrl0));
+				&data->device_control.ctrl0,
+				sizeof(data->device_control.ctrl0));
 	if (retval >= 0)
 		retval = count;
 	else
@@ -518,8 +518,8 @@ static ssize_t rmi_fn_01_nosleep_store(struct device *dev,
 		data->device_control.ctrl0 &= ~RMI_F01_CRTL0_NOSLEEP_BIT;
 
 	retval = rmi_write_block(fn->rmi_dev, fn->fd.control_base_addr,
-				 &data->device_control.ctrl0,
-			  sizeof(data->device_control.ctrl0));
+				&data->device_control.ctrl0,
+				sizeof(data->device_control.ctrl0));
 	if (retval >= 0)
 		retval = count;
 	else
@@ -565,8 +565,8 @@ static ssize_t rmi_fn_01_chargerinput_store(struct device *dev,
 		data->device_control.ctrl0 &= ~RMI_F01_CRTL0_CHARGER_BIT;
 
 	retval = rmi_write_block(fn->rmi_dev, fn->fd.control_base_addr,
-				 &data->device_control.ctrl0,
-			  sizeof(data->device_control.ctrl0));
+				&data->device_control.ctrl0,
+				sizeof(data->device_control.ctrl0));
 	if (retval >= 0)
 		retval = count;
 	else
@@ -612,8 +612,8 @@ static ssize_t rmi_fn_01_reportrate_store(struct device *dev,
 		data->device_control.ctrl0 &= ~RMI_F01_CRTL0_REPORTRATE_BIT;
 
 	retval = rmi_write_block(fn->rmi_dev, fn->fd.control_base_addr,
-				 &data->device_control.ctrl0,
-			  sizeof(data->device_control.ctrl0));
+				&data->device_control.ctrl0,
+				sizeof(data->device_control.ctrl0));
 	if (retval >= 0)
 		retval = count;
 	else

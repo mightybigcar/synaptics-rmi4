@@ -206,7 +206,7 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 
 	query_addr += RMI_PRODUCT_ID_LENGTH;
 	if (props->has_lts) {
-		error = rmi_read_block(rmi_dev, query_addr, info_buf, 1);
+		error = rmi_read(rmi_dev, query_addr, info_buf);
 		if (error < 0) {
 			dev_err(&fn->dev, "Failed to read LTS info.\n");
 			return error;
@@ -217,7 +217,7 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 	}
 
 	if (props->has_sensor_id) {
-		error = rmi_read_block(rmi_dev, query_addr, &props->sensor_id, 1);
+		error = rmi_read(rmi_dev, query_addr, &props->sensor_id);
 		if (error < 0) {
 			dev_err(&fn->dev, "Failed to read sensor ID.\n");
 			return error;
@@ -230,7 +230,7 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 		query_addr += RMI_F01_LTS_RESERVED_SIZE;
 
 	if (props->has_query42) {
-		error = rmi_read_block(rmi_dev, query_addr, info_buf, 1);
+		error = rmi_read(rmi_dev, query_addr, info_buf);
 		if (error < 0) {
 			dev_err(&fn->dev, "Failed to read additional properties.\n");
 			return error;
@@ -245,8 +245,7 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 	}
 
 	if (props->has_ds4_queries) {
-		error = rmi_read_block(rmi_dev, query_addr,
-				       &props->ds4_query_length, 1);
+		error = rmi_read(rmi_dev, query_addr, &props->ds4_query_length);
 		if (error < 0) {
 			dev_err(&fn->dev, "Failed to read DS4 query length size.\n");
 			return error;
@@ -256,7 +255,7 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 
 	for (i = 1; i <= props->ds4_query_length; i++) {
 		u8 val;
-		error = rmi_read_block(rmi_dev, query_addr, &val, 1);
+		error = rmi_read(rmi_dev, query_addr, &val);
 		query_addr++;
 		if (error < 0) {
 			dev_err(&fn->dev, "Failed to read F01_RMI_QUERY43.%02d, code: %d.\n",
@@ -324,7 +323,7 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 
 	if (props->has_reset_query) {
 		u8 val;
-		error = rmi_read_block(rmi_dev, query_addr, &val, 1);
+		error = rmi_read(rmi_dev, query_addr, &val);
 		query_addr++;
 		if (error < 0)
 			dev_warn(&fn->dev, "Failed to read F01_RMI_QUERY44, code: %d.\n",
@@ -338,7 +337,8 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 	}
 
 	if (props->has_tool_id_query) {
-		error = rmi_read_block(rmi_dev, query_addr, props->tool_id, RMI_TOOL_ID_LENGTH);
+		error = rmi_read_block(rmi_dev, query_addr, props->tool_id,
+					RMI_TOOL_ID_LENGTH);
 		if (error < 0)
 			dev_warn(&fn->dev, "Failed to read F01_RMI_QUERY45, code: %d.\n",
 				 error);
@@ -349,7 +349,8 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 	}
 
 	if (props->has_fw_revision_query) {
-		error = rmi_read_block(rmi_dev, query_addr, props->fw_revision, RMI_FW_REVISION_LENGTH);
+		error = rmi_read_block(rmi_dev, query_addr, props->fw_revision,
+					RMI_FW_REVISION_LENGTH);
 		if (error < 0)
 			dev_warn(&fn->dev, "Failed to read F01_RMI_QUERY46, code: %d.\n",
 				 error);
@@ -477,18 +478,16 @@ static int rmi_f01_config(struct rmi_function *fn)
 	}
 
 	if (data->properties.has_adjustable_doze) {
-		retval = rmi_write_block(fn->rmi_dev,
+		retval = rmi_write(fn->rmi_dev,
 					data->doze_interval_addr,
-					&data->device_control.doze_interval,
-					sizeof(u8));
+					data->device_control.doze_interval);
 		if (retval < 0) {
 			dev_err(&fn->dev, "Failed to write doze interval.\n");
 			return retval;
 		}
-		retval = rmi_write_block(
+		retval = rmi_write(
 				fn->rmi_dev, data->wakeup_threshold_addr,
-				&data->device_control.wakeup_threshold,
-				sizeof(u8));
+				data->device_control.wakeup_threshold);
 		if (retval < 0) {
 			dev_err(&fn->dev, "Failed to write wakeup threshold.\n");
 			return retval;
@@ -496,10 +495,9 @@ static int rmi_f01_config(struct rmi_function *fn)
 	}
 
 	if (data->properties.has_adjustable_doze_holdoff) {
-		retval = rmi_write_block(fn->rmi_dev,
+		retval = rmi_write(fn->rmi_dev,
 					data->doze_holdoff_addr,
-					&data->device_control.doze_holdoff,
-					sizeof(u8));
+					data->device_control.doze_holdoff);
 		if (retval < 0) {
 			dev_err(&fn->dev, "Failed to write doze holdoff.\n");
 			return retval;

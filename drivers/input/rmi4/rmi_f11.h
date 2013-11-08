@@ -167,6 +167,8 @@
 #define RMI_F11_MOUSE_BUTTONS_SHIFT		5
 #define RMI_F11_HAS_ADVANCED_GESTURES		(1 << 7)
 
+#define RMI_F11_QUERY_SIZE			4
+#define RMI_F11_QUERY_GESTURE_SIZE		2
 
 #define F11_LIGHT_CTL_NONE 0x00
 #define F11_LUXPAD	   0x01
@@ -422,9 +424,10 @@ struct f11_2d_sensor_queries {
 #define RMI_F11_DELTA_X_THRESHOLD	2
 #define RMI_F11_DELTA_Y_THRESHOLD	3
 
+#define RMI_F11_CTRL_REG_COUNT		10
 
 struct f11_2d_ctrl {
-	u8		ctrl0_9[10];
+	u8		ctrl0_9[RMI_F11_CTRL_REG_COUNT];
 	u16		ctrl0_9_address;
 };
 

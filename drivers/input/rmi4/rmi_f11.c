@@ -337,7 +337,8 @@ static int f11_read_control_regs(struct rmi_function *fn,
 	int error;
 
 	ctrl->ctrl0_9_address = ctrl_base_addr;
-	error = rmi_read_block(rmi_dev, ctrl_base_addr, ctrl->ctrl0_9, 10);
+	error = rmi_read_block(rmi_dev, ctrl_base_addr, ctrl->ctrl0_9,
+				RMI_F11_CTRL_REG_COUNT);
 	if (error < 0) {
 		dev_err(&fn->dev, "Failed to read ctrl0, code: %d.\n", error);
 		return error;
@@ -354,7 +355,8 @@ static int f11_write_control_regs(struct rmi_function *fn,
 	struct rmi_device *rmi_dev = fn->rmi_dev;
 	int error;
 
-	error = rmi_write_block(rmi_dev, ctrl_base_addr, ctrl->ctrl0_9, 10);
+	error = rmi_write_block(rmi_dev, ctrl_base_addr, ctrl->ctrl0_9,
+				RMI_F11_CTRL_REG_COUNT);
 	if (error < 0)
 		return error;
 
@@ -368,9 +370,10 @@ static int rmi_f11_get_query_parameters(struct rmi_device *rmi_dev,
 {
 	int query_size;
 	int rc;
-	u8 query_buf[4];
+	u8 query_buf[RMI_F11_QUERY_SIZE];
 
-	rc = rmi_read_block(rmi_dev, query_base_addr, query_buf, 4);
+	rc = rmi_read_block(rmi_dev, query_base_addr, query_buf,
+				RMI_F11_QUERY_SIZE);
 	if (rc < 0)
 		return rc;
 
@@ -389,7 +392,7 @@ static int rmi_f11_get_query_parameters(struct rmi_device *rmi_dev,
 	sensor_query->max_electrodes =
 				query_buf[3] & RMI_F11_NR_ELECTRODES_MASK;
 
-	query_size = 4;
+	query_size = RMI_F11_QUERY_SIZE;
 
 	if (sensor_query->has_abs) {
 		rc = rmi_read(rmi_dev, query_base_addr + query_size, query_buf);
@@ -423,7 +426,7 @@ static int rmi_f11_get_query_parameters(struct rmi_device *rmi_dev,
 
 	if (sensor_query->has_gestures) {
 		rc = rmi_read_block(rmi_dev, query_base_addr + query_size,
-					query_buf, 2);
+					query_buf, RMI_F11_QUERY_GESTURE_SIZE);
 		if (rc < 0)
 			return rc;
 
@@ -469,8 +472,7 @@ static int rmi_f11_get_query_parameters(struct rmi_device *rmi_dev,
 	}
 
 	if (f11->has_query9) {
-		rc = rmi_read_block(rmi_dev, query_base_addr + query_size,
-				    query_buf, 1);
+		rc = rmi_read(rmi_dev, query_base_addr + query_size, query_buf);
 		if (rc < 0)
 			return rc;
 
@@ -495,8 +497,7 @@ static int rmi_f11_get_query_parameters(struct rmi_device *rmi_dev,
 	}
 
 	if (sensor_query->has_touch_shapes) {
-		rc = rmi_read_block(rmi_dev, query_base_addr + query_size,
-					query_buf, 1);
+		rc = rmi_read(rmi_dev, query_base_addr + query_size, query_buf);
 		if (rc < 0)
 			return rc;
 
@@ -507,8 +508,7 @@ static int rmi_f11_get_query_parameters(struct rmi_device *rmi_dev,
 	}
 
 	if (f11->has_query11) {
-		rc = rmi_read_block(rmi_dev, query_base_addr + query_size,
-				    query_buf, 1);
+		rc = rmi_read(rmi_dev, query_base_addr + query_size, query_buf);
 		if (rc < 0)
 			return rc;
 
@@ -533,8 +533,7 @@ static int rmi_f11_get_query_parameters(struct rmi_device *rmi_dev,
 	}
 
 	if (f11->has_query12) {
-		rc = rmi_read_block(rmi_dev, query_base_addr + query_size,
-				    query_buf, 1);
+		rc = rmi_read(rmi_dev, query_base_addr + query_size, query_buf);
 		if (rc < 0)
 			return rc;
 
@@ -559,8 +558,7 @@ static int rmi_f11_get_query_parameters(struct rmi_device *rmi_dev,
 	}
 
 	if (sensor_query->has_jitter_filter) {
-		rc = rmi_read_block(rmi_dev, query_base_addr + query_size,
-				    query_buf, 1);
+		rc = rmi_read(rmi_dev, query_base_addr + query_size, query_buf);
 		if (rc < 0)
 			return rc;
 
@@ -574,8 +572,7 @@ static int rmi_f11_get_query_parameters(struct rmi_device *rmi_dev,
 	}
 
 	if (f11->has_query12 && sensor_query->has_info2) {
-		rc = rmi_read_block(rmi_dev, query_base_addr + query_size,
-				    query_buf, 1);
+		rc = rmi_read(rmi_dev, query_base_addr + query_size, query_buf);
 		if (rc < 0)
 			return rc;
 
@@ -773,7 +770,8 @@ static int rmi_f11_initialize(struct rmi_function *fn)
 			ctrl->ctrl0_9[RMI_F11_DELTA_X_THRESHOLD] =
 				sensor->axis_align.delta_x_threshold;
 			rc = rmi_write_block(rmi_dev, ctrl->ctrl0_9_address,
-					     ctrl->ctrl0_9, 10);
+					     ctrl->ctrl0_9,
+					     RMI_F11_CTRL_REG_COUNT);
 			if (rc < 0)
 				dev_warn(&fn->dev, "Failed to write to delta_x_threshold %d. Code: %d.\n",
 					i, rc);
@@ -784,7 +782,7 @@ static int rmi_f11_initialize(struct rmi_function *fn)
 			ctrl->ctrl0_9[RMI_F11_DELTA_Y_THRESHOLD] =
 				sensor->axis_align.delta_y_threshold;
 			rc = rmi_write_block(rmi_dev, ctrl->ctrl0_9_address,
-					ctrl->ctrl0_9, 10);
+					ctrl->ctrl0_9, RMI_F11_CTRL_REG_COUNT);
 			if (rc < 0)
 				dev_warn(&fn->dev, "Failed to write to delta_y_threshold %d. Code: %d.\n",
 					i, rc);
