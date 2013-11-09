@@ -613,6 +613,7 @@ static ssize_t query_write(struct file *filp,
 		if (props->has_gestures) {
 			dev_dbg(dev, "has_palm_det? %d\n", props->has_palm_det);
 			dev_dbg(dev, "has_rotate? %d\n", props->has_rotate);
+			dev_dbg(dev, "has_touch_shapes? %d\n", props->has_touch_shapes);
 			dev_dbg(dev, "has_scroll_zones? %d\n", props->has_scroll_zones);
 			dev_dbg(dev, "has_individual_scroll_zones? %d\n", props->has_individual_scroll_zones);
 			dev_dbg(dev, "has_mf_scroll? %d\n", props->has_mf_scroll);
@@ -635,7 +636,10 @@ static ssize_t query_write(struct file *filp,
 			dev_dbg(dev, "Not present.\n");
 		break;
 	case 10:
-		dev_dbg(dev, "Query 10 register: %#04x\n", props->f11_2d_query10);
+		if (props->has_touch_shapes)
+			dev_dbg(dev, "Nr touch shapes: %d\n", props->nr_touch_shapes);
+		else
+			dev_dbg(dev, "Not present.\n");
 		break;
 	case 11:
 		if (f11->has_query11) {

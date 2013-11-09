@@ -252,6 +252,10 @@ static int f11_2d_construct_data(struct f11_2d_sensor *sensor)
 			sensor->pkt_size--;
 	}
 
+	if (query->has_touch_shapes)
+		sensor->pkt_size +=
+			DIV_ROUND_UP(query->nr_touch_shapes + 1, 8);
+
 	sensor->data_pkt = kzalloc(sensor->pkt_size, GFP_KERNEL);
 	if (!sensor->data_pkt)
 		return -ENOMEM;
@@ -427,6 +431,8 @@ static int rmi_f11_get_query_parameters(struct rmi_device *rmi_dev,
 			!!(query_buf[1] & RMI_F11_HAS_PALM_DET);
 		sensor_query->has_rotate =
 			!!(query_buf[1] & RMI_F11_HAS_ROTATE);
+		sensor_query->has_touch_shapes =
+			!!(query_buf[1] & RMI_F11_HAS_TOUCH_SHAPES);
 		sensor_query->has_scroll_zones =
 			!!(query_buf[1] & RMI_F11_HAS_SCROLL_ZONES);
 		sensor_query->has_individual_scroll_zones =
@@ -465,6 +471,17 @@ static int rmi_f11_get_query_parameters(struct rmi_device *rmi_dev,
 			!!(query_buf[0] & RMI_F11_HAS_PEN_HOVER_DISCRIMINATION);
 		sensor_query->has_pen_filters =
 			!!(query_buf[0] & RMI_F11_HAS_PEN_FILTERS);
+
+		query_size++;
+	}
+
+	if (sensor_query->has_touch_shapes) {
+		rc = rmi_read(rmi_dev, query_base_addr + query_size, query_buf);
+		if (rc < 0)
+			return rc;
+
+		sensor_query->nr_touch_shapes = query_buf[0] &
+				RMI_F11_NR_TOUCH_SHAPES_MASK;
 
 		query_size++;
 	}
