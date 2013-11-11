@@ -12,6 +12,13 @@
 #include <linux/device.h>
 #include <linux/list.h>
 
+
+#define GROUP(_attrs) { \
+	.attrs = _attrs,  \
+}
+
+#define attrify(nm) (&dev_attr_##nm.attr)
+
 struct rmi_control_handler_data {
 	struct device *dev;
 	struct list_head list;
