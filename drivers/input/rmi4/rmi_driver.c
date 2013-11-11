@@ -150,11 +150,12 @@ static int enable_sensor(struct rmi_device *rmi_dev)
 	rmi_transport = rmi_dev->xport;
 	if (data->irq) {
 		retval = request_threaded_irq(data->irq,
-				rmi_transport->hard_irq ? rmi_transport->hard_irq : NULL,
-				rmi_transport->irq_thread ?
-					rmi_transport->irq_thread : rmi_irq_thread,
-				data->irq_flags,
-				dev_name(&rmi_dev->dev), rmi_transport);
+			rmi_transport->hard_irq ?
+				rmi_transport->hard_irq : NULL,
+			rmi_transport->irq_thread ?
+				rmi_transport->irq_thread : rmi_irq_thread,
+			data->irq_flags,
+			dev_name(&rmi_dev->dev), rmi_transport);
 		if (retval)
 			return retval;
 	} else {
@@ -512,8 +513,8 @@ static int create_function_dev(struct rmi_device *rmi_dev,
 
 	pdata = to_rmi_platform_data(rmi_dev);
 
-	dev_dbg(dev, "Initializing F%02X device for %s.\n", pdt->function_number,
-		pdata->sensor_name);
+	dev_dbg(dev, "Initializing F%02X device for %s.\n",
+			pdt->function_number, pdata->sensor_name);
 
 	fn = kzalloc(sizeof(struct rmi_function), GFP_KERNEL);
 	if (!fn) {
@@ -707,7 +708,7 @@ static int rmi_device_reset(struct rmi_device *rmi_dev)
 						error);
 					return error;
 				}
-				mdelay(pdata->reset_delay_ms);
+				msleep(pdata->reset_delay_ms);
 				return 0;
 			}
 		}
@@ -895,7 +896,7 @@ static int rmi_driver_resume(struct device *dev)
 		goto exit;
 
 
-	if (!IS_ENABLED(CONFIG_HAS_EARLYSUSPEND) && data->post_resume){
+	if (!IS_ENABLED(CONFIG_HAS_EARLYSUSPEND) && data->post_resume) {
 		retval = data->post_resume(data->pm_data);
 		if (retval)
 			dev_err(&rmi_dev->dev, "Post resume failed with %d.\n",
@@ -1137,7 +1138,7 @@ static int rmi_driver_probe(struct device *dev)
 					pdata->attn_gpio, retval);
 			else {
 				retval = gpio_export_link(dev,
-							"attn", pdata->attn_gpio);
+						"attn", pdata->attn_gpio);
 				if (retval) {
 					dev_warn(dev,
 						"WARNING: Failed to symlink ATTN gpio!\n");
