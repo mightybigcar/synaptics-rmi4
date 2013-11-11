@@ -861,7 +861,7 @@ static int rmi_driver_suspend(struct device *dev)
 
 	mutex_lock(&data->suspend_mutex);
 
-	if (!IS_ENABLED(CONFIG_HAS_EARLYSUSPEND) && data->pre_suspend) {
+	if (data->pre_suspend) {
 		retval = data->pre_suspend(data->pm_data);
 		if (retval)
 			goto exit;
@@ -896,7 +896,7 @@ static int rmi_driver_resume(struct device *dev)
 		goto exit;
 
 
-	if (!IS_ENABLED(CONFIG_HAS_EARLYSUSPEND) && data->post_resume) {
+	if (data->post_resume) {
 		retval = data->post_resume(data->pm_data);
 		if (retval)
 			dev_err(&rmi_dev->dev, "Post resume failed with %d.\n",
@@ -908,57 +908,12 @@ exit:
 	return retval;
 }
 
-#if defined(CONFIG_HAS_EARLYSUSPEND)
 
-static void rmi_driver_early_suspend(struct early_suspend *h)
-{
-	struct rmi_device *rmi_dev =
-	    container_of(h, struct rmi_device, early_suspend_handler);
-	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
-	int retval = 0;
-
-	mutex_lock(&data->suspend_mutex);
-
-	if (data->pre_suspend) {
-		retval = data->pre_suspend(data->pm_data);
-		if (retval)
-			dev_err(&rmi_dev->dev, "Presuspend failed with %d.\n",
-				retval);
-	}
-
-	mutex_unlock(&data->suspend_mutex);
-}
-
-static void rmi_driver_late_resume(struct early_suspend *h)
-{
-	struct rmi_device *rmi_dev =
-	    container_of(h, struct rmi_device, early_suspend_handler);
-	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
-	int retval = 0;
-
-	mutex_lock(&data->suspend_mutex);
-
-
-	if (data->post_resume) {
-		retval = data->post_resume(data->pm_data);
-		if (retval)
-			dev_err(&rmi_dev->dev, "Post resume failed with %d.\n",
-				retval);
-	}
-
-	mutex_unlock(&data->suspend_mutex);
-}
-#endif /* defined(CONFIG_HAS_EARLYSUSPEND) */
-
-#endif /* CONFIG_PM */
+#endif /* CONFIG_PM_SLEEP */
 
 static int rmi_driver_remove(struct rmi_device *rmi_dev)
 {
 	disable_sensor(rmi_dev);
-
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	unregister_early_suspend(&rmi_dev->early_suspend_handler);
-#endif
 
 	rmi_free_function_list(rmi_dev);
 	return 0;
@@ -1109,16 +1064,6 @@ static int rmi_driver_probe(struct device *dev)
 		data->post_resume = pdata->post_resume;
 
 		mutex_init(&data->suspend_mutex);
-
-#ifdef CONFIG_HAS_EARLYSUSPEND
-		rmi_dev->early_suspend_handler.level =
-			EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1;
-		rmi_dev->early_suspend_handler.suspend =
-					rmi_driver_early_suspend;
-		rmi_dev->early_suspend_handler.resume =
-					rmi_driver_late_resume;
-		register_early_suspend(&rmi_dev->early_suspend_handler);
-#endif
 	}
 
 	if (data->f01_dev->dev.driver) {

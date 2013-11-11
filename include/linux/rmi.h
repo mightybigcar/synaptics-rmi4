@@ -22,7 +22,6 @@
 #include <linux/types.h>
 #include <linux/wait.h>
 #include <linux/debugfs.h>
-#include <linux/earlysuspend.h>
 
 enum rmi_attn_polarity {
 	RMI_ATTN_ACTIVE_LOW = 0,

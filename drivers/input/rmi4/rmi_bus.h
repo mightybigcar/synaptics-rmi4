@@ -12,7 +12,6 @@
 
 #include <linux/kernel.h>
 #include <linux/device.h>
-#include <linux/earlysuspend.h>
 #include <linux/interrupt.h>
 #include <linux/input.h>
 #include <linux/list.h>
@@ -235,10 +234,6 @@ struct rmi_device {
 	struct dentry *debugfs_root;
 	int    interrupt_restore_block_flag;
 
-
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	struct early_suspend early_suspend_handler;
-#endif
 };
 
 #define to_rmi_device(d) container_of(d, struct rmi_device, dev)
