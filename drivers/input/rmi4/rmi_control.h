@@ -43,7 +43,8 @@ struct rmi_control_handler {
 	struct device_type *dev_type;
 	u8 function_id;
 
-	struct rmi_control_handler_data * (*attach) (struct device *dev, void *data);
+	struct rmi_control_handler_data * (*attach) (struct device *dev,
+						     void *data);
 	int (*remove) (struct rmi_control_handler_data *hdata);
 
 	struct notifier_block notifier;
