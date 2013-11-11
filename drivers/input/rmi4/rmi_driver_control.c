@@ -26,7 +26,7 @@ struct driver_ctl_data {
 	struct rmi_device *rmi_dev;
 
 #ifdef	CONFIG_RMI4_DEBUG
-	// TODO: Move delay into SPI module.
+	/* TODO: Move delay into SPI module. */
 	struct dentry *debugfs_delay;
 #endif
 
@@ -160,7 +160,8 @@ static int setup_debugfs(struct driver_ctl_data *ctl_data)
 		ctl_data->debugfs_delay = debugfs_create_file("delay",
 				RMI_RW_ATTR, rmi_dev->debugfs_root, rmi_dev,
 				&delay_fops);
-		if (!ctl_data->debugfs_delay || IS_ERR(ctl_data->debugfs_delay)) {
+		if (!ctl_data->debugfs_delay ||
+				IS_ERR(ctl_data->debugfs_delay)) {
 			dev_warn(&rmi_dev->dev, "Failed to create debugfs delay.\n");
 			ctl_data->debugfs_delay = NULL;
 		}
@@ -215,7 +216,7 @@ static ssize_t rmi_driver_bsr_store(struct device *dev,
 	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
 
 	/* need to convert the string data to an actual value */
-	retval = strict_strtoul(buf, 10, &val);
+	retval = kstrtoul(buf, 10, &val);
 	if (retval < 0 || val > 255) {
 		dev_err(dev, "Invalid value '%s' written to BSR.\n", buf);
 		return -EINVAL;
@@ -254,7 +255,8 @@ static int driver_ctl_cleanup(struct rmi_control_handler_data *hdata)
 	return 0;
 }
 
-static struct rmi_control_handler_data *driver_ctl_attach(struct device *dev, void *data)
+static struct rmi_control_handler_data *driver_ctl_attach(struct device *dev,
+							  void *data)
 {
 	struct rmi_device *rmi_dev = to_rmi_device(dev);
 	struct driver_ctl_data *ctl_data;
@@ -264,7 +266,8 @@ static struct rmi_control_handler_data *driver_ctl_attach(struct device *dev, vo
 	rmi_dev = to_rmi_device(dev);
 	dev_dbg(dev, "%s called.\n", __func__);
 
-	ctl_data = devm_kzalloc(dev, sizeof(struct driver_ctl_data), GFP_KERNEL);
+	ctl_data = devm_kzalloc(dev, sizeof(struct driver_ctl_data),
+				GFP_KERNEL);
 	if (!ctl_data)
 		return NULL;
 	ctl_data->rmi_dev = rmi_dev;
