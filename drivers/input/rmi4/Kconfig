@@ -7,6 +7,9 @@ config RMI4_CORE
 	  Say Y here if you want to support the Synaptics RMI4 bus.  This is
 	  required for all RMI4 device support.
 
+	  The RMI4 bus supports touch input devices such as touchscreens,
+	  touchpads, capacitive buttons, and so on.
+
 	  If unsure, say Y.
 
 config RMI4_CONTROL
@@ -14,6 +17,9 @@ config RMI4_CONTROL
 	depends on RMI4_CORE
 	help
 	  Say Y here to enable the sysfs control API in the RMI4 driver.
+
+	  This will provide a sysfs interface for common configuration and
+	  control options relating to RMI4 devices.
 
 	  If unsure, say N.
 
