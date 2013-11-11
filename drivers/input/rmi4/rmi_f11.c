@@ -502,7 +502,8 @@ static int rmi_f11_get_query_parameters(struct rmi_device *rmi_dev,
 		sensor_query->has_finger_size =
 			!!(query_buf[0] & RMI_F11_HAS_FINGER_SIZE);
 		sensor_query->has_segmentation_aggressiveness =
-			!!(query_buf[0] & RMI_F11_HAS_SEGMENTATION_AGGRESSIVENESS);
+			!!(query_buf[0] &
+				RMI_F11_HAS_SEGMENTATION_AGGRESSIVENESS);
 		sensor_query->has_XY_clip =
 			!!(query_buf[0] & RMI_F11_HAS_XY_CLIP);
 		sensor_query->has_drumming_filter =
@@ -804,8 +805,8 @@ static int rmi_f11_register_devices(struct rmi_function *fn)
 				goto error_unregister;
 			}
 		}
-		sprintf(sensor->input_phys, "%s.abs%d/input0",
-			dev_name(&fn->dev), i);
+		snprintf(sensor->input_phys, NAME_BUFFER_SIZE,
+			 "%s.abs%d/input0", dev_name(&fn->dev), i);
 		input_dev->phys = sensor->input_phys;
 		input_dev->dev.parent = &rmi_dev->dev;
 		input_set_drvdata(input_dev, f11);
@@ -841,14 +842,13 @@ static int rmi_f11_register_devices(struct rmi_function *fn)
 				rc = driver->set_input_params(rmi_dev,
 					input_dev_mouse);
 				if (rc < 0) {
-					dev_err(&fn->dev,
-					"%s: Error in setting input device.\n",
+					dev_err(&fn->dev, "%s: Error in setting input device.\n",
 					__func__);
 					goto error_unregister;
 				}
 			}
-			sprintf(sensor->input_phys_mouse, "%s.rel%d/input0",
-				dev_name(&fn->dev), i);
+			snprintf(sensor->input_phys_mouse, NAME_BUFFER_SIZE,
+				 "%s.rel%d/input0", dev_name(&fn->dev), i);
 			set_bit(EV_REL, input_dev_mouse->evbit);
 			set_bit(REL_X, input_dev_mouse->relbit);
 			set_bit(REL_Y, input_dev_mouse->relbit);
@@ -958,7 +958,7 @@ static int rmi_f11_resume(struct device *dev)
 	if (!data->rezero_wait_ms)
 		return 0;
 
-	mdelay(data->rezero_wait_ms);
+	msleep(data->rezero_wait_ms);
 
 	retval = rmi_write(rmi_dev, fn->fd.command_base_addr, RMI_F11_REZERO);
 	if (retval < 0) {
