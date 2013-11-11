@@ -211,8 +211,10 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 			dev_err(&fn->dev, "Failed to read LTS info.\n");
 			return error;
 		}
-		props->slave_asic_rows = info_buf[0] & RMI_F01_QRY21_SLAVE_ROWS_MASK;
-		props->slave_asic_columns = (info_buf[1] & RMI_F01_QRY21_SLAVE_COLUMNS_MASK) >> 3;
+		props->slave_asic_rows = info_buf[0] &
+				RMI_F01_QRY21_SLAVE_ROWS_MASK;
+		props->slave_asic_columns = (info_buf[1] &
+				RMI_F01_QRY21_SLAVE_COLUMNS_MASK) >> 3;
 		query_addr++;
 	}
 
@@ -235,12 +237,16 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 			dev_err(&fn->dev, "Failed to read additional properties.\n");
 			return error;
 		}
-		props->has_ds4_queries = info_buf[0] & RMI_F01_QRY42_DS4_QUERIES;
-		props->has_multi_physical = info_buf[0] & RMI_F01_QRY42_MULTI_PHYS;
+		props->has_ds4_queries = info_buf[0] &
+				RMI_F01_QRY42_DS4_QUERIES;
+		props->has_multi_physical = info_buf[0] &
+				RMI_F01_QRY42_MULTI_PHYS;
 		props->has_guest = info_buf[0] & RMI_F01_QRY42_GUEST;
 		props->has_swr = info_buf[0] & RMI_F01_QRY42_SWR;
-		props->has_nominal_report_rate = info_buf[0] & RMI_F01_QRY42_NOMINAL_REPORT;
-		props->has_recalibration_interval = info_buf[0] & RMI_F01_QRY42_RECAL_INTERVAL;
+		props->has_nominal_report_rate = info_buf[0] &
+				RMI_F01_QRY42_NOMINAL_REPORT;
+		props->has_recalibration_interval = info_buf[0] &
+				RMI_F01_QRY42_RECAL_INTERVAL;
 		query_addr++;
 	}
 
@@ -264,21 +270,28 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 		}
 		switch (i) {
 		case 1:
-			props->has_package_id_query = val & RMI_F01_QRY43_01_PACKAGE_ID;
-			props->has_build_id_query = val & RMI_F01_QRY43_01_BUILD_ID;
+			props->has_package_id_query = val &
+					RMI_F01_QRY43_01_PACKAGE_ID;
+			props->has_build_id_query = val &
+					RMI_F01_QRY43_01_BUILD_ID;
 			props->has_reset_query = val & RMI_F01_QRY43_01_RESET;
-			props->has_maskrev_query = val & RMI_F01_QRY43_01_PACKAGE_ID;
+			props->has_maskrev_query = val &
+					RMI_F01_QRY43_01_PACKAGE_ID;
 			break;
 		case 2:
 			props->has_i2c_control = val & RMI_F01_QRY43_02_I2C_CTL;
 			props->has_spi_control = val & RMI_F01_QRY43_02_SPI_CTL;
-			props->has_attn_control = val & RMI_F01_QRY43_02_ATTN_CTL;
-			props->has_win8_vendor_info = val & RMI_F01_QRY43_02_WIN8;
+			props->has_attn_control = val &
+					RMI_F01_QRY43_02_ATTN_CTL;
+			props->has_win8_vendor_info = val &
+					RMI_F01_QRY43_02_WIN8;
 			props->has_timestamp = val & RMI_F01_QRY43_02_TIMESTAMP;
 			break;
 		case 3:
-			props->has_tool_id_query = val & RMI_F01_QRY43_03_TOOL_ID;
-			props->has_fw_revision_query = val & RMI_F01_QRY43_03_FW_REVISION;
+			props->has_tool_id_query = val &
+					RMI_F01_QRY43_03_TOOL_ID;
+			props->has_fw_revision_query = val &
+					RMI_F01_QRY43_03_FW_REVISION;
 			break;
 		default:
 			dev_warn(&fn->dev, "No handling for F01_RMI_QUERY43.%02d.\n",
@@ -330,9 +343,12 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 				error);
 		else {
 			props->reset_enabled = val & RMI_F01_QRY44_RST_ENABLED;
-			props->reset_polarity = val & RMI_F01_QRY44_RST_POLARITY;
-			props->pullup_enabled = val & RMI_F01_QRY44_PULLUP_ENABLED;
-			props->reset_pin = (val & RMI_F01_QRY44_RST_PIN_MASK) >> 4;
+			props->reset_polarity = val &
+					RMI_F01_QRY44_RST_POLARITY;
+			props->pullup_enabled = val &
+					RMI_F01_QRY44_PULLUP_ENABLED;
+			props->reset_pin = (val &
+					RMI_F01_QRY44_RST_PIN_MASK) >> 4;
 		}
 	}
 

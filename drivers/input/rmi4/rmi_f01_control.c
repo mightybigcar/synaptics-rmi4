@@ -196,17 +196,23 @@ static ssize_t query_write(struct file *filp,
 	dev_dbg(&data->fn->dev, "QUERY %d\n", query);
 	switch (query) {
 	case 0:
-		dev_dbg(&data->fn->dev, "Manufacturer: %d.\n", props->manufacturer_id);
+		dev_dbg(&data->fn->dev, "Manufacturer: %d.\n",
+					props->manufacturer_id);
 		break;
 	case 1:
 		dev_dbg(&data->fn->dev, "Has LTS? %d\n", props->has_lts);
-		dev_dbg(&data->fn->dev, "has_sensor_id? %d\n", props->has_sensor_id);
-		dev_dbg(&data->fn->dev, "has_adjustable_doze? %d\n", props->has_adjustable_doze);
-		dev_dbg(&data->fn->dev, "has_adjustable_doze_holdoff? %d\n", props->has_adjustable_doze_holdoff);
-		dev_dbg(&data->fn->dev, "has_query42? %d\n", props->has_query42);
+		dev_dbg(&data->fn->dev, "has_sensor_id? %d\n",
+					props->has_sensor_id);
+		dev_dbg(&data->fn->dev, "has_adjustable_doze? %d\n",
+					props->has_adjustable_doze);
+		dev_dbg(&data->fn->dev, "has_adjustable_doze_holdoff? %d\n",
+					props->has_adjustable_doze_holdoff);
+		dev_dbg(&data->fn->dev, "has_query42? %d\n",
+					props->has_query42);
 		break;
 	case 5:
-		dev_dbg(&data->fn->dev, "Date of manufacture: %s\n", props->dom);
+		dev_dbg(&data->fn->dev, "Date of manufacture: %s\n",
+					props->dom);
 		break;
 	case 11:
 		dev_dbg(&data->fn->dev, "Product ID: %s\n", props->product_id);
@@ -230,12 +236,18 @@ static ssize_t query_write(struct file *filp,
 		break;
 	case 42:
 		if (props->has_query42) {
-			dev_dbg(&data->fn->dev, "Has DS4 Querys? %d\n", props->has_ds4_queries);
-			dev_dbg(&data->fn->dev, "Has multi physical? %d\n", props->has_multi_physical);
-			dev_dbg(&data->fn->dev, "Has guest? %d\n", props->has_guest);
-			dev_dbg(&data->fn->dev, "Has SWR? %d\n", props->has_swr);
-			dev_dbg(&data->fn->dev, "Has nominal report rate? %d\n", props->has_nominal_report_rate);
-			dev_dbg(&data->fn->dev, "Has recalibration interval? %d\n", props->has_recalibration_interval);
+			dev_dbg(&data->fn->dev, "Has DS4 Querys? %d\n",
+					props->has_ds4_queries);
+			dev_dbg(&data->fn->dev, "Has multi physical? %d\n",
+					props->has_multi_physical);
+			dev_dbg(&data->fn->dev, "Has guest? %d\n",
+					props->has_guest);
+			dev_dbg(&data->fn->dev, "Has SWR? %d\n",
+					props->has_swr);
+			dev_dbg(&data->fn->dev, "Has nominal report rate? %d\n",
+					props->has_nominal_report_rate);
+			dev_dbg(&data->fn->dev, "Has recalibration interval? %d\n",
+					props->has_recalibration_interval);
 		} else {
 			dev_dbg(&data->fn->dev, "Not present.\n");
 		}
@@ -244,40 +256,57 @@ static ssize_t query_write(struct file *filp,
 		if (props->has_ds4_queries) {
 			dev_dbg(&data->fn->dev, "DS4 query length is %d.\n",
 						props->ds4_query_length);
-			dev_dbg(&data->fn->dev, "has_package_id_query? %d\n", props->has_package_id_query);
-			dev_dbg(&data->fn->dev, "has_build_id_query? %d\n", props->has_build_id_query);
-			dev_dbg(&data->fn->dev, "has_reset_query? %d\n", props->has_reset_query);
-			dev_dbg(&data->fn->dev, "has_maskrev_query? %d\n", props->has_maskrev_query);
-			dev_dbg(&data->fn->dev, "has_i2c_control? %d\n", props->has_i2c_control);
-			dev_dbg(&data->fn->dev, "has_spi_control? %d\n", props->has_spi_control);
-			dev_dbg(&data->fn->dev, "has_attn_control? %d\n", props->has_attn_control);
-			dev_dbg(&data->fn->dev, "has_win8_vendor_info? %d\n", props->has_win8_vendor_info);
-			dev_dbg(&data->fn->dev, "has_timestamp? %d\n", props->has_timestamp);
-			dev_dbg(&data->fn->dev, "has_tool_id_query? %d\n", props->has_tool_id_query);
-			dev_dbg(&data->fn->dev, "has_fw_revision_query? %d\n", props->has_fw_revision_query);
+			dev_dbg(&data->fn->dev, "has_package_id_query? %d\n",
+					props->has_package_id_query);
+			dev_dbg(&data->fn->dev, "has_build_id_query? %d\n",
+					props->has_build_id_query);
+			dev_dbg(&data->fn->dev, "has_reset_query? %d\n",
+					props->has_reset_query);
+			dev_dbg(&data->fn->dev, "has_maskrev_query? %d\n",
+					props->has_maskrev_query);
+			dev_dbg(&data->fn->dev, "has_i2c_control? %d\n",
+					props->has_i2c_control);
+			dev_dbg(&data->fn->dev, "has_spi_control? %d\n",
+					props->has_spi_control);
+			dev_dbg(&data->fn->dev, "has_attn_control? %d\n",
+					props->has_attn_control);
+			dev_dbg(&data->fn->dev, "has_win8_vendor_info? %d\n",
+					props->has_win8_vendor_info);
+			dev_dbg(&data->fn->dev, "has_timestamp? %d\n",
+					props->has_timestamp);
+			dev_dbg(&data->fn->dev, "has_tool_id_query? %d\n",
+					props->has_tool_id_query);
+			dev_dbg(&data->fn->dev, "has_fw_revision_query? %d\n",
+					props->has_fw_revision_query);
 		} else {
 			dev_dbg(&data->fn->dev, "Not present.\n");
 		}
 		break;
 	case 44:
 		if (props->has_reset_query) {
-			dev_dbg(&data->fn->dev, "reset_enabled? %d\n", props->reset_enabled);
-			dev_dbg(&data->fn->dev, "reset_polarity? %d\n", props->reset_polarity);
-			dev_dbg(&data->fn->dev, "pullup_enabled? %d\n", props->pullup_enabled);
-			dev_dbg(&data->fn->dev, "reset_pin = %d\n", props->reset_pin);
+			dev_dbg(&data->fn->dev, "reset_enabled? %d\n",
+					props->reset_enabled);
+			dev_dbg(&data->fn->dev, "reset_polarity? %d\n",
+					props->reset_polarity);
+			dev_dbg(&data->fn->dev, "pullup_enabled? %d\n",
+					props->pullup_enabled);
+			dev_dbg(&data->fn->dev, "reset_pin = %d\n",
+					props->reset_pin);
 		} else {
 			dev_dbg(&data->fn->dev, "Not present.\n");
 		}
 		break;
 	case 45:
 		if (props->has_tool_id_query)
-			dev_dbg(&data->fn->dev, "Tool ID = \"%s\"\n", props->tool_id);
+			dev_dbg(&data->fn->dev, "Tool ID = \"%s\"\n",
+					props->tool_id);
 		else
 			dev_dbg(&data->fn->dev, "Not present.\n");
 		break;
 	case 46:
 		if (props->has_fw_revision_query)
-			dev_dbg(&data->fn->dev, "FW revision = \"%s\"\n", props->fw_revision);
+			dev_dbg(&data->fn->dev, "FW revision = \"%s\"\n",
+					props->fw_revision);
 		else
 			dev_dbg(&data->fn->dev, "Not present.\n");
 		break;
@@ -455,7 +484,7 @@ static ssize_t rmi_fn_01_sleepmode_store(struct device *dev,
 	unsigned long new_value;
 	int retval;
 
-	retval = strict_strtoul(buf, 10, &new_value);
+	retval = kstrtoul(buf, 10, &new_value);
 	if (retval < 0 || !RMI_IS_VALID_SLEEPMODE(new_value)) {
 		dev_err(dev, "%s: Invalid sleep mode %s.", __func__, buf);
 		return -EINVAL;
@@ -502,7 +531,7 @@ static ssize_t rmi_fn_01_nosleep_store(struct device *dev,
 	unsigned long new_value;
 	int retval;
 
-	retval = strict_strtoul(buf, 10, &new_value);
+	retval = kstrtoul(buf, 10, &new_value);
 	if (retval < 0 || new_value > 1) {
 		dev_err(dev, "%s: Invalid nosleep bit %s.", __func__, buf);
 		return -EINVAL;
@@ -549,7 +578,7 @@ static ssize_t rmi_fn_01_chargerinput_store(struct device *dev,
 	unsigned long new_value;
 	int retval;
 
-	retval = strict_strtoul(buf, 10, &new_value);
+	retval = kstrtoul(buf, 10, &new_value);
 	if (retval < 0 || new_value > 1) {
 		dev_err(dev, "%s: Invalid chargerinput bit %s.", __func__, buf);
 		return -EINVAL;
@@ -596,7 +625,7 @@ static ssize_t rmi_fn_01_reportrate_store(struct device *dev,
 	unsigned long new_value;
 	int retval;
 
-	retval = strict_strtoul(buf, 10, &new_value);
+	retval = kstrtoul(buf, 10, &new_value);
 	if (retval < 0 || new_value > 1) {
 		dev_err(dev, "%s: Invalid reportrate bit %s.", __func__, buf);
 		return -EINVAL;
@@ -690,7 +719,7 @@ static ssize_t rmi_fn_01_doze_interval_store(struct device *dev,
 	int retval;
 	u16 ctrl_addr;
 
-	retval = strict_strtoul(buf, 10, &new_value);
+	retval = kstrtoul(buf, 10, &new_value);
 	if (retval < 0 || new_value > 255) {
 		dev_err(dev, "%s: Invalid doze interval %s.", __func__, buf);
 		return -EINVAL;
@@ -733,7 +762,7 @@ static ssize_t rmi_fn_01_wakeup_threshold_store(struct device *dev,
 	unsigned long new_value;
 	int retval;
 
-	retval = strict_strtoul(buf, 10, &new_value);
+	retval = kstrtoul(buf, 10, &new_value);
 	if (retval < 0 || new_value > 255) {
 		dev_err(dev, "%s: Invalid wakeup threshold %s.", __func__, buf);
 		return -EINVAL;
@@ -772,7 +801,7 @@ static ssize_t rmi_fn_01_doze_holdoff_store(struct device *dev,
 	unsigned long new_value;
 	int retval;
 
-	retval = strict_strtoul(buf, 10, &new_value);
+	retval = kstrtoul(buf, 10, &new_value);
 	if (retval < 0 || new_value > 255) {
 		dev_err(dev, "%s: Invalid doze holdoff %s.", __func__, buf);
 		return -EINVAL;
@@ -1027,7 +1056,8 @@ static int f01_ctl_cleanup(struct rmi_control_handler_data *hdata)
 	return 0;
 }
 
-static struct rmi_control_handler_data *f01_ctl_attach(struct device *dev, void *data)
+static struct rmi_control_handler_data *f01_ctl_attach(struct device *dev,
+						       void *data)
 {
 	struct rmi_function *fn;
 	struct f01_ctl_data *ctl_data;
