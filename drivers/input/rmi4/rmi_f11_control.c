@@ -695,8 +695,8 @@ static ssize_t query_write(struct file *filp, const char __user *buffer,
 			dev_dbg(dev, "has_adjustable_mapping? %d\n",
 					props->has_adjustable_mapping);
 			dev_dbg(dev, "has_info2? %d\n", props->has_info2);
-			dev_dbg(dev, "has_physical_props? %d\n", p
-					rops->has_physical_props);
+			dev_dbg(dev, "has_physical_props? %d\n",
+					props->has_physical_props);
 			dev_dbg(dev, "has_finger_limit? %d\n",
 					props->has_finger_limit);
 			dev_dbg(dev, "has_linear_coeff_2? %d\n",
@@ -729,13 +729,13 @@ static ssize_t query_write(struct file *filp, const char __user *buffer,
 		break;
 	case 27:
 		if (f11->has_query27)
-			/* TBD */
+			dev_dbg(dev, "Query27 handling unimplemented.\n");
 		else
 			dev_dbg(dev, "Not present.\n");
 		break;
 	case 28:
 		if (f11->has_query28)
-			/* TBD */
+			dev_dbg(dev, "Query28 handling unimplemented.\n");
 		else
 			dev_dbg(dev, "Not present.\n");
 		break;
