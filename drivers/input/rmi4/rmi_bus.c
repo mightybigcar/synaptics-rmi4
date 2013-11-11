@@ -108,9 +108,6 @@ int rmi_register_transport_device(struct rmi_transport_device *xport)
 	rmi_dev->dev.bus = &rmi_bus_type;
 	rmi_dev->dev.type = &rmi_device_type;
 
-	// FIXME: This assignment breaks the driver.
-// 	rmi_dev->dev.driver = &rmi_physical_driver.driver;
-
 	xport->rmi_dev = rmi_dev;
 
 	rmi_physical_setup_debugfs(rmi_dev);
