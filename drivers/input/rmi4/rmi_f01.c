@@ -124,18 +124,20 @@ int rmi_f01_read_properties(struct rmi_device *rmi_dev, u16 query_base_addr,
 
 	query_addr += RMI_PRODUCT_ID_LENGTH;
 	if (props->has_lts) {
-		error = rmi_read_block(rmi_dev, query_addr, info_buf, 1);
+		error = rmi_read(rmi_dev, query_addr, info_buf);
 		if (error < 0) {
 			dev_err(&rmi_dev->dev, "Failed to read LTS info.\n");
 			return error;
 		}
-		props->slave_asic_rows = info_buf[0] & RMI_F01_QRY21_SLAVE_ROWS_MASK;
-		props->slave_asic_columns = (info_buf[1] & RMI_F01_QRY21_SLAVE_COLUMNS_MASK) >> 3;
+		props->slave_asic_rows = info_buf[0] &
+				RMI_F01_QRY21_SLAVE_ROWS_MASK;
+		props->slave_asic_columns = (info_buf[1] &
+				RMI_F01_QRY21_SLAVE_COLUMNS_MASK) >> 3;
 		query_addr++;
 	}
 
 	if (props->has_sensor_id) {
-		error = rmi_read_block(rmi_dev, query_addr, &props->sensor_id, 1);
+		error = rmi_read(rmi_dev, query_addr, &props->sensor_id);
 		if (error < 0) {
 			dev_err(&rmi_dev->dev, "Failed to read sensor ID.\n");
 			return error;
@@ -148,23 +150,26 @@ int rmi_f01_read_properties(struct rmi_device *rmi_dev, u16 query_base_addr,
 		query_addr += RMI_F01_LTS_RESERVED_SIZE;
 
 	if (props->has_query42) {
-		error = rmi_read_block(rmi_dev, query_addr, info_buf, 1);
+		error = rmi_read(rmi_dev, query_addr, info_buf);
 		if (error < 0) {
 			dev_err(&rmi_dev->dev, "Failed to read additional properties.\n");
 			return error;
 		}
-		props->has_ds4_queries = info_buf[0] & RMI_F01_QRY42_DS4_QUERIES;
-		props->has_multi_physical = info_buf[0] & RMI_F01_QRY42_MULTI_PHYS;
+		props->has_ds4_queries = info_buf[0] &
+				RMI_F01_QRY42_DS4_QUERIES;
+		props->has_multi_physical = info_buf[0] &
+				RMI_F01_QRY42_MULTI_PHYS;
 		props->has_guest = info_buf[0] & RMI_F01_QRY42_GUEST;
 		props->has_swr = info_buf[0] & RMI_F01_QRY42_SWR;
-		props->has_nominal_report_rate = info_buf[0] & RMI_F01_QRY42_NOMINAL_REPORT;
-		props->has_recalibration_interval = info_buf[0] & RMI_F01_QRY42_RECAL_INTERVAL;
+		props->has_nominal_report_rate = info_buf[0] &
+				RMI_F01_QRY42_NOMINAL_REPORT;
+		props->has_recalibration_interval = info_buf[0] &
+				RMI_F01_QRY42_RECAL_INTERVAL;
 		query_addr++;
 	}
 
 	if (props->has_ds4_queries) {
-		error = rmi_read_block(rmi_dev, query_addr,
-				       &props->ds4_query_length, 1);
+		error = rmi_read(rmi_dev, query_addr, &props->ds4_query_length);
 		if (error < 0) {
 			dev_err(&rmi_dev->dev, "Failed to read DS4 query length size.\n");
 			return error;
@@ -174,7 +179,7 @@ int rmi_f01_read_properties(struct rmi_device *rmi_dev, u16 query_base_addr,
 
 	for (i = 1; i <= props->ds4_query_length; i++) {
 		u8 val;
-		error = rmi_read_block(rmi_dev, query_addr, &val, 1);
+		error = rmi_read(rmi_dev, query_addr, &val);
 		query_addr++;
 		if (error < 0) {
 			dev_err(&rmi_dev->dev, "Failed to read F01_RMI_QUERY43.%02d, code: %d.\n",
@@ -183,21 +188,28 @@ int rmi_f01_read_properties(struct rmi_device *rmi_dev, u16 query_base_addr,
 		}
 		switch (i) {
 		case 1:
-			props->has_package_id_query = val & RMI_F01_QRY43_01_PACKAGE_ID;
-			props->has_build_id_query = val & RMI_F01_QRY43_01_BUILD_ID;
+			props->has_package_id_query = val &
+					RMI_F01_QRY43_01_PACKAGE_ID;
+			props->has_build_id_query = val &
+					RMI_F01_QRY43_01_BUILD_ID;
 			props->has_reset_query = val & RMI_F01_QRY43_01_RESET;
-			props->has_maskrev_query = val & RMI_F01_QRY43_01_PACKAGE_ID;
+			props->has_maskrev_query = val &
+					RMI_F01_QRY43_01_PACKAGE_ID;
 			break;
 		case 2:
 			props->has_i2c_control = val & RMI_F01_QRY43_02_I2C_CTL;
 			props->has_spi_control = val & RMI_F01_QRY43_02_SPI_CTL;
-			props->has_attn_control = val & RMI_F01_QRY43_02_ATTN_CTL;
-			props->has_win8_vendor_info = val & RMI_F01_QRY43_02_WIN8;
+			props->has_attn_control = val &
+					RMI_F01_QRY43_02_ATTN_CTL;
+			props->has_win8_vendor_info = val &
+					RMI_F01_QRY43_02_WIN8;
 			props->has_timestamp = val & RMI_F01_QRY43_02_TIMESTAMP;
 			break;
 		case 3:
-			props->has_tool_id_query = val & RMI_F01_QRY43_03_TOOL_ID;
-			props->has_fw_revision_query = val & RMI_F01_QRY43_03_FW_REVISION;
+			props->has_tool_id_query = val &
+					RMI_F01_QRY43_03_TOOL_ID;
+			props->has_fw_revision_query = val &
+					RMI_F01_QRY43_03_FW_REVISION;
 			break;
 		default:
 			dev_warn(&rmi_dev->dev, "No handling for F01_RMI_QUERY43.%02d.\n",
@@ -242,21 +254,25 @@ int rmi_f01_read_properties(struct rmi_device *rmi_dev, u16 query_base_addr,
 
 	if (props->has_reset_query) {
 		u8 val;
-		error = rmi_read_block(rmi_dev, query_addr, &val, 1);
+		error = rmi_read(rmi_dev, query_addr, &val);
 		query_addr++;
 		if (error < 0)
 			dev_warn(&rmi_dev->dev, "Failed to read F01_RMI_QUERY44, code: %d.\n",
 				error);
 		else {
 			props->reset_enabled = val & RMI_F01_QRY44_RST_ENABLED;
-			props->reset_polarity = val & RMI_F01_QRY44_RST_POLARITY;
-			props->pullup_enabled = val & RMI_F01_QRY44_PULLUP_ENABLED;
-			props->reset_pin = (val & RMI_F01_QRY44_RST_PIN_MASK) >> 4;
+			props->reset_polarity = val &
+					RMI_F01_QRY44_RST_POLARITY;
+			props->pullup_enabled = val &
+					RMI_F01_QRY44_PULLUP_ENABLED;
+			props->reset_pin = (val &
+					RMI_F01_QRY44_RST_PIN_MASK) >> 4;
 		}
 	}
 
 	if (props->has_tool_id_query) {
-		error = rmi_read_block(rmi_dev, query_addr, props->tool_id, RMI_TOOL_ID_LENGTH);
+		error = rmi_read_block(rmi_dev, query_addr, props->tool_id,
+					RMI_TOOL_ID_LENGTH);
 		if (error < 0)
 			dev_warn(&rmi_dev->dev, "Failed to read F01_RMI_QUERY45, code: %d.\n",
 				 error);
@@ -267,7 +283,8 @@ int rmi_f01_read_properties(struct rmi_device *rmi_dev, u16 query_base_addr,
 	}
 
 	if (props->has_fw_revision_query) {
-		error = rmi_read_block(rmi_dev, query_addr, props->fw_revision, RMI_FW_REVISION_LENGTH);
+		error = rmi_read_block(rmi_dev, query_addr, props->fw_revision,
+					RMI_FW_REVISION_LENGTH);
 		if (error < 0)
 			dev_warn(&rmi_dev->dev, "Failed to read F01_RMI_QUERY46, code: %d.\n",
 				 error);
@@ -488,18 +505,16 @@ static int rmi_f01_config(struct rmi_function *fn)
 	}
 
 	if (data->properties.has_adjustable_doze) {
-		retval = rmi_write_block(fn->rmi_dev,
+		retval = rmi_write(fn->rmi_dev,
 					data->doze_interval_addr,
-					&data->device_control.doze_interval,
-					sizeof(u8));
+					data->device_control.doze_interval);
 		if (retval < 0) {
 			dev_err(&fn->dev, "Failed to write doze interval.\n");
 			return retval;
 		}
-		retval = rmi_write_block(
+		retval = rmi_write(
 				fn->rmi_dev, data->wakeup_threshold_addr,
-				&data->device_control.wakeup_threshold,
-				sizeof(u8));
+				data->device_control.wakeup_threshold);
 		if (retval < 0) {
 			dev_err(&fn->dev, "Failed to write wakeup threshold.\n");
 			return retval;
@@ -507,10 +522,9 @@ static int rmi_f01_config(struct rmi_function *fn)
 	}
 
 	if (data->properties.has_adjustable_doze_holdoff) {
-		retval = rmi_write_block(fn->rmi_dev,
+		retval = rmi_write(fn->rmi_dev,
 					data->doze_holdoff_addr,
-					&data->device_control.doze_holdoff,
-					sizeof(u8));
+					data->device_control.doze_holdoff);
 		if (retval < 0) {
 			dev_err(&fn->dev, "Failed to write doze holdoff.\n");
 			return retval;
@@ -524,8 +538,6 @@ static int rmi_f01_probe(struct rmi_function *fn)
 	struct rmi_driver_data *driver_data =
 			dev_get_drvdata(&fn->rmi_dev->dev);
 	int error;
-
-	dev_dbg(&fn->dev, "%s called.\n", __func__);
 
 	error = rmi_f01_alloc_memory(fn, driver_data->num_of_irq_regs);
 	if (error < 0)

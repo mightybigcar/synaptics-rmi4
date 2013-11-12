@@ -147,7 +147,7 @@ static int copy_to_debug_buf(struct device *dev, struct rmi_i2c_data *data,
 	temp = data->debug_buf;
 
 	for (i = 0; i < len; i++) {
-		n = sprintf(temp, " %02x", buf[i]);
+		n = snprintf(temp, 3, " %02x", buf[i]);
 		temp += n;
 	}
 
@@ -276,19 +276,19 @@ static int rmi_i2c_probe(struct i2c_client *client,
 	}
 
 	if (pdata->gpio_config) {
-		dev_dbg(&client->dev, "Configuring GPIOs.\n");
 		retval = pdata->gpio_config(pdata->gpio_data, true);
 		if (retval < 0) {
 			dev_err(&client->dev, "Failed to configure GPIOs, code: %d.\n",
 				retval);
 			return retval;
 		}
-		mdelay(pdata->reset_delay_ms ? pdata->reset_delay_ms : DEFAULT_RESET_DELAY_MS);
+		msleep(pdata->reset_delay_ms ?
+				pdata->reset_delay_ms : DEFAULT_RESET_DELAY_MS);
 		dev_info(&client->dev, "Done with GPIO configuration.\n");
 	}
 
-	rmi_transport = devm_kzalloc(&client->dev, sizeof(struct rmi_transport_device),
-				GFP_KERNEL);
+	rmi_transport = devm_kzalloc(&client->dev,
+			sizeof(struct rmi_transport_device), GFP_KERNEL);
 
 	if (!rmi_transport)
 		return -ENOMEM;

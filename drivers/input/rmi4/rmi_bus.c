@@ -108,9 +108,6 @@ int rmi_register_transport_device(struct rmi_transport_device *xport)
 	rmi_dev->dev.bus = &rmi_bus_type;
 	rmi_dev->dev.type = &rmi_device_type;
 
-	// FIXME: This assignment breaks the driver.
-// 	rmi_dev->dev.driver = &rmi_physical_driver.driver;
-
 	xport->rmi_dev = rmi_dev;
 
 	rmi_physical_setup_debugfs(rmi_dev);
@@ -216,8 +213,6 @@ static int rmi_function_probe(struct device *dev)
 {
 	struct rmi_function_driver *fn_drv;
 	struct rmi_function *fn = to_rmi_function(dev);
-
-	dev_dbg(dev, "%s called.\n", __func__);
 
 	fn_drv = to_rmi_function_driver(dev->driver);
 

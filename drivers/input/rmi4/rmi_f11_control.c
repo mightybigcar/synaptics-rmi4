@@ -366,7 +366,8 @@ static const struct file_operations clip_fops = {
 	.write = clip_write,
 };
 
-static void rmi_f11_setup_sensor_debugfs(struct f11_sensor_ctl_data *sensor_data)
+static void rmi_f11_setup_sensor_debugfs(
+				struct f11_sensor_ctl_data *sensor_data)
 {
 	int retval = 0;
 	char fname[NAME_BUFFER_SIZE];
@@ -493,8 +494,8 @@ static loff_t debug_seek(struct file *filp, loff_t offset, int whence)
 	return data->pos;
 }
 
-static ssize_t report_count_read(struct file *filp, char __user *buffer, size_t size,
-		    loff_t *offset) {
+static ssize_t report_count_read(struct file *filp,
+			char __user *buffer, size_t size, loff_t *offset) {
 	struct f11_debugfs_data *data = filp->private_data;
 	struct rmi_function *fn = data->fn;
 	struct f11_data *f11 = fn->data;
@@ -540,8 +541,8 @@ static const struct file_operations report_count_fops = {
 	.read = report_count_read,
 };
 
-static ssize_t query_write(struct file *filp,
-			   const char __user *buffer, size_t size, loff_t *offset) {
+static ssize_t query_write(struct file *filp, const char __user *buffer,
+			   size_t size, loff_t *offset) {
 	char buf[size];
 	unsigned int query;
 	int retval;
@@ -572,7 +573,8 @@ static ssize_t query_write(struct file *filp,
 		dev_dbg(dev, "has_rel? %d\n", props->has_rel);
 		dev_dbg(dev, "has_abs? %d\n", props->has_abs);
 		dev_dbg(dev, "has_gestures? %d\n", props->has_gestures);
-		dev_dbg(dev, "has_sensitivity_adjust? %d\n", props->has_sensitivity_adjust);
+		dev_dbg(dev, "has_sensitivity_adjust? %d\n",
+					props->has_sensitivity_adjust);
 		dev_dbg(dev, "configurable? %d\n", props->configurable);
 		break;
 	case 2:
@@ -586,22 +588,30 @@ static ssize_t query_write(struct file *filp,
 		break;
 	case 5:
 		dev_dbg(dev, "Abs data size: %d\n", props->abs_data_size);
-		dev_dbg(dev, "has_anchored_finger? %d\n", props->has_anchored_finger);
+		dev_dbg(dev, "has_anchored_finger? %d\n",
+					props->has_anchored_finger);
 		dev_dbg(dev, "has_adj_hyst? %d\n", props->has_adj_hyst);
 		dev_dbg(dev, "has_dribble? %d\n", props->has_dribble);
-		dev_dbg(dev, "has_bending_correction? %d\n", props->has_bending_correction);
-		dev_dbg(dev, "has_large_object_suppression? %d\n", props->has_large_object_suppression);
-		dev_dbg(dev, "has_jitter_filter? %d\n", props->has_jitter_filter);
+		dev_dbg(dev, "has_bending_correction? %d\n",
+					props->has_bending_correction);
+		dev_dbg(dev, "has_large_object_suppression? %d\n",
+					props->has_large_object_suppression);
+		dev_dbg(dev, "has_jitter_filter? %d\n",
+					props->has_jitter_filter);
 		break;
 	case 6:
 		dev_dbg(dev, "Query 6 register: %#04x\n", props->f11_2d_query6);
 		break;
 	case 7:
 		if (props->has_gestures) {
-			dev_dbg(dev, "has_single_tap? %d\n", props->has_single_tap);
-			dev_dbg(dev, "has_tap_n_hold? %d\n", props->has_tap_n_hold);
-			dev_dbg(dev, "has_double_tap? %d\n", props->has_double_tap);
-			dev_dbg(dev, "has_early_tap? %d\n", props->has_early_tap);
+			dev_dbg(dev, "has_single_tap? %d\n",
+						props->has_single_tap);
+			dev_dbg(dev, "has_tap_n_hold? %d\n",
+						props->has_tap_n_hold);
+			dev_dbg(dev, "has_double_tap? %d\n",
+						props->has_double_tap);
+			dev_dbg(dev, "has_early_tap? %d\n",
+						props->has_early_tap);
 			dev_dbg(dev, "has_flick? %d\n", props->has_flick);
 			dev_dbg(dev, "has_press? %d\n", props->has_press);
 			dev_dbg(dev, "has_pinch? %d\n", props->has_pinch);
@@ -611,89 +621,122 @@ static ssize_t query_write(struct file *filp,
 		break;
 	case 8:
 		if (props->has_gestures) {
-			dev_dbg(dev, "has_palm_det? %d\n", props->has_palm_det);
-			dev_dbg(dev, "has_rotate? %d\n", props->has_rotate);
-			dev_dbg(dev, "has_touch_shapes? %d\n", props->has_touch_shapes);
-			dev_dbg(dev, "has_scroll_zones? %d\n", props->has_scroll_zones);
-			dev_dbg(dev, "has_individual_scroll_zones? %d\n", props->has_individual_scroll_zones);
-			dev_dbg(dev, "has_mf_scroll? %d\n", props->has_mf_scroll);
-			dev_dbg(dev, "has_mf_edge_motion? %d\n", props->has_mf_edge_motion);
-			dev_dbg(dev, "has_mf_scroll_inertia? %d\n", props->has_mf_scroll_inertia);
+			dev_dbg(dev, "has_palm_det? %d\n",
+						props->has_palm_det);
+			dev_dbg(dev, "has_rotate? %d\n",
+						props->has_rotate);
+			dev_dbg(dev, "has_touch_shapes? %d\n",
+						props->has_touch_shapes);
+			dev_dbg(dev, "has_scroll_zones? %d\n",
+						props->has_scroll_zones);
+			dev_dbg(dev, "has_individual_scroll_zones? %d\n",
+					props->has_individual_scroll_zones);
+			dev_dbg(dev, "has_mf_scroll? %d\n",
+						props->has_mf_scroll);
+			dev_dbg(dev, "has_mf_edge_motion? %d\n",
+						props->has_mf_edge_motion);
+			dev_dbg(dev, "has_mf_scroll_inertia? %d\n",
+						props->has_mf_scroll_inertia);
 		} else
 			dev_dbg(dev, "Not present.\n");
 		break;
 	case 9:
 		if (f11->has_query9) {
 			dev_dbg(dev, "has_pen? %d\n", props->has_pen);
-			dev_dbg(dev, "has_proximity? %d\n", props->has_proximity);
-			dev_dbg(dev, "has_palm_det_sensitivity? %d\n", props->has_palm_det_sensitivity);
-			dev_dbg(dev, "has_suppress_on_palm_detect? %d\n", props->has_suppress_on_palm_detect);
-			dev_dbg(dev, "has_two_pen_thresholds? %d\n", props->has_two_pen_thresholds);
-			dev_dbg(dev, "has_contact_geometry? %d\n", props->has_contact_geometry);
-			dev_dbg(dev, "has_pen_hover_discrimination? %d\n", props->has_pen_hover_discrimination);
-			dev_dbg(dev, "has_pen_filters? %d\n", props->has_pen_filters);
+			dev_dbg(dev, "has_proximity? %d\n",
+					props->has_proximity);
+			dev_dbg(dev, "has_palm_det_sensitivity? %d\n",
+					props->has_palm_det_sensitivity);
+			dev_dbg(dev, "has_suppress_on_palm_detect? %d\n",
+					props->has_suppress_on_palm_detect);
+			dev_dbg(dev, "has_two_pen_thresholds? %d\n",
+					props->has_two_pen_thresholds);
+			dev_dbg(dev, "has_contact_geometry? %d\n",
+					props->has_contact_geometry);
+			dev_dbg(dev, "has_pen_hover_discrimination? %d\n",
+					props->has_pen_hover_discrimination);
+			dev_dbg(dev, "has_pen_filters? %d\n",
+					props->has_pen_filters);
 		} else
 			dev_dbg(dev, "Not present.\n");
 		break;
 	case 10:
 		if (props->has_touch_shapes)
-			dev_dbg(dev, "Nr touch shapes: %d\n", props->nr_touch_shapes);
+			dev_dbg(dev, "Nr touch shapes: %d\n",
+					props->nr_touch_shapes);
 		else
 			dev_dbg(dev, "Not present.\n");
 		break;
 	case 11:
 		if (f11->has_query11) {
 			dev_dbg(dev, "has_z_tuning? %d\n", props->has_z_tuning);
-			dev_dbg(dev, "has_algorithm_selection? %d\n", props->has_algorithm_selection);
+			dev_dbg(dev, "has_algorithm_selection? %d\n",
+					props->has_algorithm_selection);
 			dev_dbg(dev, "has_w_tuning? %d\n", props->has_w_tuning);
-			dev_dbg(dev, "has_pitch_info? %d\n", props->has_pitch_info);
-			dev_dbg(dev, "has_finger_size? %d\n", props->has_finger_size);
-			dev_dbg(dev, "has_segmentation_aggressiveness? %d\n", props->has_segmentation_aggressiveness);
+			dev_dbg(dev, "has_pitch_info? %d\n",
+					props->has_pitch_info);
+			dev_dbg(dev, "has_finger_size? %d\n",
+					props->has_finger_size);
+			dev_dbg(dev, "has_segmentation_aggressiveness? %d\n",
+					props->has_segmentation_aggressiveness);
 			dev_dbg(dev, "has_XY_clip? %d\n", props->has_XY_clip);
-			dev_dbg(dev, "has_drumming_filter? %d\n", props->has_drumming_filter);
+			dev_dbg(dev, "has_drumming_filter? %d\n",
+					props->has_drumming_filter);
 		} else
 			dev_dbg(dev, "Not present.\n");
 		break;
 	case 12:
 		if (f11->has_query12) {
-			dev_dbg(dev, "has_gapless_finger? %d\n", props->has_gapless_finger);
-			dev_dbg(dev, "has_gapless_finger_tuning? %d\n", props->has_gapless_finger_tuning);
+			dev_dbg(dev, "has_gapless_finger? %d\n",
+					props->has_gapless_finger);
+			dev_dbg(dev, "has_gapless_finger_tuning? %d\n",
+					props->has_gapless_finger_tuning);
 			dev_dbg(dev, "has_8bit_w? %d\n", props->has_8bit_w);
-			dev_dbg(dev, "has_adjustable_mapping? %d\n", props->has_adjustable_mapping);
+			dev_dbg(dev, "has_adjustable_mapping? %d\n",
+					props->has_adjustable_mapping);
 			dev_dbg(dev, "has_info2? %d\n", props->has_info2);
-			dev_dbg(dev, "has_physical_props? %d\n", props->has_physical_props);
-			dev_dbg(dev, "has_finger_limit? %d\n", props->has_finger_limit);
-			dev_dbg(dev, "has_linear_coeff_2? %d\n", props->has_linear_coeff_2);
+			dev_dbg(dev, "has_physical_props? %d\n",
+					props->has_physical_props);
+			dev_dbg(dev, "has_finger_limit? %d\n",
+					props->has_finger_limit);
+			dev_dbg(dev, "has_linear_coeff_2? %d\n",
+					props->has_linear_coeff_2);
 		} else
 			dev_dbg(dev, "Not present.\n");
 		break;
 	case 13:
 		if (props->has_jitter_filter) {
-			dev_dbg(dev, "jitter_filter_type: %d\n", props->jitter_filter_type);
-			dev_dbg(dev, "jitter_filter_type: %d\n", props->jitter_filter_type);
+			dev_dbg(dev, "jitter_filter_type: %d\n",
+					props->jitter_filter_type);
+			dev_dbg(dev, "jitter_filter_type: %d\n",
+					props->jitter_filter_type);
 		} else
 			dev_dbg(dev, "Not present.\n");
 		break;
 	case 14:
 		if (props->has_info2) {
-			dev_dbg(dev, "light_control: %d\n", props->light_control);
+			dev_dbg(dev, "light_control: %d\n",
+					props->light_control);
 			dev_dbg(dev, "is_clear? %d\n", props->is_clear);
-			dev_dbg(dev, "clickpad_props: %d\n", props->clickpad_props);
-			dev_dbg(dev, "mouse_buttons: %d\n", props->mouse_buttons);
-			dev_dbg(dev, "has_advanced_gestures? %d\n", props->has_advanced_gestures);
+			dev_dbg(dev, "clickpad_props: %d\n",
+					props->clickpad_props);
+			dev_dbg(dev, "mouse_buttons: %d\n",
+					props->mouse_buttons);
+			dev_dbg(dev, "has_advanced_gestures? %d\n",
+					props->has_advanced_gestures);
 		} else
 			dev_dbg(dev, "Not present.\n");
 		break;
 	case 27:
-		if (f11->has_query27) {
-			// TBD
-		} else
+		if (f11->has_query27)
+			dev_dbg(dev, "Query27 handling unimplemented.\n");
+		else
 			dev_dbg(dev, "Not present.\n");
 		break;
 	case 28:
-		if (f11->has_query28) {
-			// TBD
-		} else
+		if (f11->has_query28)
+			dev_dbg(dev, "Query28 handling unimplemented.\n");
+		else
 			dev_dbg(dev, "Not present.\n");
 		break;
 	default:
@@ -798,7 +841,8 @@ static int f11_ctl_cleanup(struct rmi_control_handler_data *hdata)
 	return 0;
 }
 
-static struct rmi_control_handler_data *f11_ctl_attach(struct device *dev, void *data)
+static struct rmi_control_handler_data *f11_ctl_attach(struct device *dev,
+						       void *data)
 {
 	struct rmi_function *fn = to_rmi_function(dev);
 	struct f11_data *f11 = fn->data;
@@ -818,9 +862,8 @@ static struct rmi_control_handler_data *f11_ctl_attach(struct device *dev, void 
 		rmi_f11_setup_sensor_debugfs(&ctl_data->sensor_data[i]);
 	}
 
-	if (sysfs_create_group(&fn->dev.kobj, &fn11_attrs) < 0) {
+	if (sysfs_create_group(&fn->dev.kobj, &fn11_attrs) < 0)
 		dev_warn(&fn->dev, "Failed to create query sysfs files.");
-	}
 	rmi_f11_setup_debugfs(ctl_data);
 
 	return &ctl_data->handler_data;

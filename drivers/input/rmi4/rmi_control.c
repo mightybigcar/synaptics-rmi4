@@ -28,7 +28,8 @@ static struct rmi_control_handler_data *get_handler_data(struct device *dev,
 
 static int rmi_ctl_cleanup(struct device *dev, void *data)
 {
-	struct rmi_control_handler *handler = (struct rmi_control_handler *) data;
+	struct rmi_control_handler *handler =
+		(struct rmi_control_handler *) data;
 	struct rmi_control_handler_data *hdata;
 
 	if (dev->type != handler->dev_type)
@@ -44,7 +45,8 @@ static int rmi_ctl_cleanup(struct device *dev, void *data)
 
 static int rmi_ctl_attach(struct device *dev, void *data)
 {
-	struct rmi_control_handler *handler = (struct rmi_control_handler *) data;
+	struct rmi_control_handler *handler =
+		(struct rmi_control_handler *) data;
 	struct rmi_control_handler_data *hdata;
 
 	if (dev->type != handler->dev_type)
@@ -55,8 +57,6 @@ static int rmi_ctl_attach(struct device *dev, void *data)
 		if (fn->fd.function_number != handler->function_id)
 			return 0;
 	}
-
-	dev_dbg(dev, "%s: control match with %s.\n", __func__, handler->name);
 
 	hdata = handler->attach(dev, handler);
 	if (!hdata) {
@@ -72,7 +72,8 @@ static int rmi_ctl_notifier_call(struct notifier_block *nb,
 				unsigned long action, void *data)
 {
 	struct device *dev = data;
-	struct rmi_control_handler *handler = container_of(nb, struct rmi_control_handler, notifier);
+	struct rmi_control_handler *handler =
+		container_of(nb, struct rmi_control_handler, notifier);
 
 	switch (action) {
 	case BUS_NOTIFY_ADD_DEVICE:
@@ -103,7 +104,8 @@ static int rmi_ctl_notifier_call(struct notifier_block *nb,
 
 /** Called to register a handler with the control/debug system.
  */
-int rmi_register_control_handler(struct rmi_control_handler *handler) {
+int rmi_register_control_handler(struct rmi_control_handler *handler)
+{
 	int error;
 
 	pr_debug("%s: registering handler for %s.\n", __func__, handler->name);
@@ -127,7 +129,8 @@ EXPORT_SYMBOL(rmi_register_control_handler);
 
 /** Called to register a handler with the control/debug system.
  */
-void rmi_unregister_control_handler(struct rmi_control_handler *handler) {
+void rmi_unregister_control_handler(struct rmi_control_handler *handler)
+{
 	pr_debug("%s: unregistering handler %s.\n", __func__, handler->name);
 	pr_warn("WARNING %s is not implemented yet.\n", __func__);
 }
