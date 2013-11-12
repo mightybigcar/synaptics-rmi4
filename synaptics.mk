@@ -6,28 +6,28 @@ incr = $(shell echo $(1)+1 | bc)
 
 VER_FILE=drivers/input/rmi4/rmi_version.h
 
-VER_MAJOR=$(shell grep RMI_VERSION_MAJOR $(VER_FILE) | head -1 | cut --delimiter=\  -f 3)
-VER_MINOR=$(shell grep RMI_VERSION_MINOR $(VER_FILE) | cut --delimiter=\  -f 3)
-VER_SUBMINOR=$(shell grep RMI_VERSION_SUBMINOR $(VER_FILE) | cut --delimiter=\  -f 3)
-VER_EXTRA=$(shell grep RMI_EXTRA_NUMBER $(VER_FILE) | cut --delimiter=\  -f 3)
+VER_MAJOR=$(shell grep RMI_VERSION_MAJOR $(VER_FILE) | head -1 | cut --delimiter=\  -f 3 | sed s/\"//g)
+VER_MINOR=$(shell grep RMI_VERSION_MINOR $(VER_FILE) | head -1 | cut --delimiter=\  -f 3 | sed s/\"//g)
+VER_SUBMINOR=$(shell grep RMI_VERSION_SUBMINOR $(VER_FILE) | head -1 | cut --delimiter=\  -f 3 | sed s/\"//g)
+VER_EXTRA=$(shell grep RMI_EXTRA_NUMBER $(VER_FILE) | head -1| cut --delimiter=\  -f 3 | sed s/\"//g)
 
 GIT_BRANCH=$(shell git rev-parse --abbrev-ref HEAD)
-PREV_BRANCH=$(shell grep RMI_VERSION_BRANCH $(VER_FILE) | cut --delimiter=\  -f 3)
+PREV_BRANCH=$(shell grep RMI_VERSION_BRANCH $(VER_FILE) | head -1 | cut --delimiter=\  -f 3 | sed s/\"//g)
 
 ifneq ($(GIT_BRANCH),$(PREV_BRANCH))
     $(shell sed -i '/define RMI_VERSION_BRANCH/c \
-#define RMI_VERSION_BRANCH $(GIT_BRANCH)' $(VER_FILE))
+#define RMI_VERSION_BRANCH \"$(GIT_BRANCH)\"' $(VER_FILE))
     $(shell sed -i '/define RMI_EXTRA_NUMBER/c \
-#define RMI_EXTRA_NUMBER 0' $(VER_FILE))
+#define RMI_EXTRA_NUMBER \"0\"' $(VER_FILE))
     VER_EXTRA=0
 
     ifeq ($(GIT_BRANCH),synaptics-rmi4)
         $(shell sed -i '/define RMI_EXTRA_STRING/c \
-#define RMI_EXTRA_STRING 0' $(VER_FILE))
+#define RMI_EXTRA_STRING \"0\"' $(VER_FILE))
     else
         EXTRA_VERSION=$(subst -,.,$(subst _,.,$(GIT_BRANCH)))
         $(shell sed -i '/define RMI_EXTRA_STRING/c \
-#define RMI_EXTRA_STRING $(EXTRA_VERSION).0' $(VER_FILE))
+#define RMI_EXTRA_STRING \"$(EXTRA_VERSION).0\"' $(VER_FILE))
     endif
 endif
 
@@ -55,31 +55,31 @@ clean:
 
 clear-minor:
 	@sed -i '/define RMI_VERSION_MINOR/c \
-#define RMI_VERSION_MINOR 0' $(VER_FILE)
+#define RMI_VERSION_MINOR \"0\"' $(VER_FILE)
 
 clear-subminor:
 	@sed -i '/define RMI_VERSION_SUBMINOR/c \
-#define RMI_VERSION_SUBMINOR 0' $(VER_FILE)
+#define RMI_VERSION_SUBMINOR \"0\"' $(VER_FILE)
 
 clear-extra:
 	@sed -i '/define RMI_EXTRA_NUMBER/c \
-#define RMI_EXTRA_NUMBER 0' $(VER_FILE)
+#define RMI_EXTRA_NUMBER \"0\"' $(VER_FILE)
 
 bump-major: clear-minor clear-subminor clear-extra
 	@sed -i '/define RMI_VERSION_MAJOR/c \
-#define RMI_VERSION_MAJOR $(call incr,$(VER_MAJOR))' $(VER_FILE)
+#define RMI_VERSION_MAJOR \"$(call incr,$(VER_MAJOR))\"' $(VER_FILE)
 
 bump-minor: clear-subminor clear-extra
 	@sed -i '/define RMI_VERSION_MINOR/c \
-#define RMI_VERSION_MINOR $(call incr,$(VER_MINOR))' $(VER_FILE)
+#define RMI_VERSION_MINOR \"$(call incr,$(VER_MINOR))\"' $(VER_FILE)
 
 bump-subminor: clear-extra
 	@sed -i '/define RMI_VERSION_SUBMINOR/c \
-#define RMI_VERSION_SUBMINOR $(call incr,$(VER_SUBMINOR))' $(VER_FILE)
+#define RMI_VERSION_SUBMINOR \"$(call incr,$(VER_SUBMINOR))\"' $(VER_FILE)
 
 bump-extra:
 	@sed -i '/define RMI_EXTRA_NUMBER/c \
-#define RMI_EXTRA_NUMBER $(call incr,$(VER_EXTRA))' $(VER_FILE)
+#define RMI_EXTRA_NUMBER \"$(call incr,$(VER_EXTRA))\"' $(VER_FILE)
 
 tarball: bump-extra
 	@echo Creating $(TAR_NAME)...
@@ -108,4 +108,4 @@ version:
 	@echo Extra: $(VER_EXTRA)
 	@echo Tarfile: $(TAR_NAME)
 	@echo Tar tag: $(TAR_TAG)
-	
+
