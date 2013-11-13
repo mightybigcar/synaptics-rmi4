@@ -510,7 +510,7 @@ int rmi_read_pdt_entry(struct rmi_device *rmi_dev, struct pdt_entry *entry,
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(rmi_read_pdt_entry)
+EXPORT_SYMBOL_GPL(rmi_read_pdt_entry);
 
 static void copy_pdt_entry_to_fd(struct pdt_entry *pdt,
 				 struct rmi_function_descriptor *fd,
@@ -736,7 +736,7 @@ static int rmi_device_reset(struct rmi_device *rmi_dev)
 
 static int rmi_count_irqs(struct rmi_device *rmi_dev)
 {
-	struct rmi_driver_data *data= dev_get_drvdata(&rmi_dev->dev);
+	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
 	struct pdt_entry pdt_entry;
 	int page;
 	int irq_count = 0;
