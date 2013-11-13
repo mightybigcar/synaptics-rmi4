@@ -60,7 +60,6 @@ struct rmi_f11_2d_axis_alignment {
 	u8 delta_y_threshold;
 };
 
-
 /** This is used to override any hints an F11 2D sensor might have provided
  * as to what type of sensor it is.
  *
