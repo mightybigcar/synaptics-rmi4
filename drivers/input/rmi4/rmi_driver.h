@@ -27,11 +27,7 @@
 #define PDT_PROPERTIES_LOCATION 0x00EF
 #define BSR_LOCATION 0x00FE
 
-struct pdt_properties {
-	u8 reserved_1:6;
-	u8 has_bsr:1;
-	u8 reserved_2:1;
-} __attribute__((__packed__));
+#define RMI_PDT_PROPS_HAS_BSR 0x02
 
 struct rmi_driver_data {
 	struct list_head function_list;
@@ -57,7 +53,7 @@ struct rmi_driver_data {
 	struct work_struct poll_work;
 	ktime_t poll_interval;
 	struct mutex pdt_mutex;
-	struct pdt_properties pdt_props;
+	u8 pdt_props;
 	u8 bsr;
 
 	int board;
