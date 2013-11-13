@@ -830,7 +830,7 @@ static int f01_notifier_call(struct notifier_block *nb,
 	struct device *dev = data;
 	struct rmi_function *fn;
 
-	if (dev->type != &rmi_function_type)
+	if (!rmi_is_function_device(dev))
 		return 0;
 
 	fn = to_rmi_function(dev);

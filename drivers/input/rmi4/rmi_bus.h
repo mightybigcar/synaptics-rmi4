@@ -102,11 +102,11 @@ struct rmi_function_driver {
 	struct device_driver driver;
 
 	u8 func;
-	int (*probe)(struct rmi_function *fc);
-	int (*remove)(struct rmi_function *fc);
-	int (*config)(struct rmi_function *fc);
-	int (*reset)(struct rmi_function *fc);
-	int (*attention)(struct rmi_function *fc, unsigned long *irq_bits);
+	int (*probe)(struct rmi_function *fn);
+	int (*remove)(struct rmi_function *fn);
+	int (*config)(struct rmi_function *fn);
+	int (*reset)(struct rmi_function *fn);
+	int (*attention)(struct rmi_function *fn, unsigned long *irq_bits);
 };
 
 #define to_rmi_function_driver(d) \

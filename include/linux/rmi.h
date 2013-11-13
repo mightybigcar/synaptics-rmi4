@@ -33,29 +33,29 @@ enum rmi_attn_polarity {
  * @swap_axes: set to TRUE if desired to swap x- and y-axis
  * @flip_x: set to TRUE if desired to flip direction on x-axis
  * @flip_y: set to TRUE if desired to flip direction on y-axis
- * @clip_X_low - reported X coordinates below this setting will be clipped to
+ * @clip_x_low - reported X coordinates below this setting will be clipped to
  *               the specified value
- * @clip_X_high - reported X coordinates above this setting will be clipped to
+ * @clip_x_high - reported X coordinates above this setting will be clipped to
  *               the specified value
- * @clip_Y_low - reported Y coordinates below this setting will be clipped to
+ * @clip_y_low - reported Y coordinates below this setting will be clipped to
  *               the specified value
- * @clip_Y_high - reported Y coordinates above this setting will be clipped to
+ * @clip_y_high - reported Y coordinates above this setting will be clipped to
  *               the specified value
- * @offset_X - this value will be added to all reported X coordinates
- * @offset_Y - this value will be added to all reported Y coordinates
+ * @offset_x - this value will be added to all reported X coordinates
+ * @offset_y - this value will be added to all reported Y coordinates
  * @rel_report_enabled - if set to true, the relative reporting will be
  *               automatically enabled for this sensor.
  */
 struct rmi_f11_2d_axis_alignment {
-	u32 swap_axes;
-	bool flip_x;
-	bool flip_y;
-	int clip_X_low;
-	int clip_Y_low;
-	int clip_X_high;
-	int clip_Y_high;
-	int offset_X;
-	int offset_Y;
+	u32 swap_axes;	/* boolean, but u32 is needed by debugfs API */
+	u32 flip_x;	/* boolean */
+	u32 flip_y;	/* boolean */
+	u16 clip_x_low;
+	u16 clip_y_low;
+	u16 clip_x_high;
+	u16 clip_y_high;
+	u16 offset_x;
+	u16 offset_y;
 	u8 delta_x_threshold;
 	u8 delta_y_threshold;
 };
@@ -180,13 +180,13 @@ struct rmi_f30_gpioled_map {
  * with assert==FALSE.
  */
 struct rmi_device_platform_data_spi {
-	int block_delay_us;
-	int split_read_block_delay_us;
-	int read_delay_us;
-	int write_delay_us;
-	int split_read_byte_delay_us;
-	int pre_delay_us;
-	int post_delay_us;
+	u32 block_delay_us;
+	u32 split_read_block_delay_us;
+	u32 read_delay_us;
+	u32 write_delay_us;
+	u32 split_read_byte_delay_us;
+	u32 pre_delay_us;
+	u32 post_delay_us;
 
 	void *cs_assert_data;
 	int (*cs_assert) (const void *cs_assert_data, const bool assert);
@@ -311,29 +311,5 @@ struct rmi_function_descriptor {
 	u8 function_number;
 	u8 function_version;
 };
-
-
-/**
- * Helper fn to convert a byte array representing a 16 bit value in the RMI
- * endian-ness to a 16-bit value in the native processor's specific endianness.
- * We don't use ntohs/htons here because, well, we're not dealing with
- * a pair of 16 bit values. Casting dest to u16* wouldn't work, because
- * that would imply knowing the byte order of u16 in the first place.  The
- * same applies for using shifts and masks.
- */
-static inline u16 batohs(u8 *src)
-{
-	return src[1] << 8 | src[0];
-}
-/**
- * Helper function to convert a 16 bit value (in host processor endianess) to
- * a byte array in the RMI endianess for u16s.  See above comment for
- * why we dont us htons or something like that.
- */
-static inline void hstoba(u8 *dest, u16 src)
-{
-	dest[0] = src & 0xFF;
-	dest[1] =  src >> 8;
-}
 
 #endif

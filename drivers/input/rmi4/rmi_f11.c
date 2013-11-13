@@ -99,8 +99,9 @@ static void rmi_f11_abs_pos_report(struct f11_data *f11,
 {
 	struct f11_2d_data *data = &sensor->data;
 	struct rmi_f11_2d_axis_alignment *axis_align = &sensor->axis_align;
-	int x, y, z;
-	int w_x, w_y, w_max, w_min, orient;
+	u16 x, y, z;
+	u16 w_x, w_y, w_max, w_min;
+	int orient;
 	int temp;
 	u8 abs_base = n_finger * RMI_F11_ABS_BYTES;
 
@@ -142,14 +143,14 @@ static void rmi_f11_abs_pos_report(struct f11_data *f11,
 		* or we could get funny values that are outside
 		* clipping boundaries.
 		*/
-		x += axis_align->offset_X;
-		y += axis_align->offset_Y;
-		x =  max(axis_align->clip_X_low, x);
-		y =  max(axis_align->clip_Y_low, y);
-		if (axis_align->clip_X_high)
-			x = min(axis_align->clip_X_high, x);
-		if (axis_align->clip_Y_high)
-			y =  min(axis_align->clip_Y_high, y);
+		x += axis_align->offset_x;
+		y += axis_align->offset_y;
+		x =  max(axis_align->clip_x_low, x);
+		y =  max(axis_align->clip_y_low, y);
+		if (axis_align->clip_x_high)
+			x = min(axis_align->clip_x_high, x);
+		if (axis_align->clip_y_high)
+			y =  min(axis_align->clip_y_high, y);
 
 	}
 
@@ -158,8 +159,8 @@ static void rmi_f11_abs_pos_report(struct f11_data *f11,
 	 * fingers. */
 	if (IS_ENABLED(CONFIG_RMI4_F11_PEN) &&
 			get_tool_type(sensor, finger_state) == MT_TOOL_PEN) {
-		w_max = max(1, w_max);
-		w_min = max(1, w_min);
+		w_max = max((u16) 1, w_max);
+		w_min = max((u16) 1, w_min);
 	}
 
 	if (sensor->type_a) {
@@ -588,11 +589,11 @@ static void f11_set_abs_params(struct rmi_function *fn, int index)
 	int device_x_max = le16_to_cpu(*(f11->dev_controls.ctrl0_9 + 6));
 	int device_y_max = le16_to_cpu(*(f11->dev_controls.ctrl0_9 + 8));
 	 */
-	int device_x_max = f11->dev_controls.ctrl0_9[6] |
+	u16 device_x_max = f11->dev_controls.ctrl0_9[6] |
 		((f11->dev_controls.ctrl0_9[7] & 0x0F) << 8);
-	int device_y_max = f11->dev_controls.ctrl0_9[8] |
+	u16 device_y_max = f11->dev_controls.ctrl0_9[8] |
 		((f11->dev_controls.ctrl0_9[9] & 0x0F) << 8);
-	int x_min, x_max, y_min, y_max;
+	u16 x_min, x_max, y_min, y_max;
 	unsigned int input_flags;
 
 	/* We assume touchscreen unless demonstrably a touchpad or specified
@@ -614,17 +615,15 @@ static void f11_set_abs_params(struct rmi_function *fn, int index)
 	/* Use the max X and max Y read from the device, or the clip values,
 	 * whichever is stricter.
 	 */
-	x_min = sensor->axis_align.clip_X_low;
-	if (sensor->axis_align.clip_X_high)
-		x_max = min((int) device_x_max,
-			sensor->axis_align.clip_X_high);
+	x_min = sensor->axis_align.clip_x_low;
+	if (sensor->axis_align.clip_x_high)
+		x_max = min(device_x_max, sensor->axis_align.clip_x_high);
 	else
 		x_max = device_x_max;
 
-	y_min = sensor->axis_align.clip_Y_low;
-	if (sensor->axis_align.clip_Y_high)
-		y_max = min((int) device_y_max,
-			sensor->axis_align.clip_Y_high);
+	y_min = sensor->axis_align.clip_y_low;
+	if (sensor->axis_align.clip_y_high)
+		y_max = min(device_y_max, sensor->axis_align.clip_y_high);
 	else
 		y_max = device_y_max;
 
@@ -645,7 +644,7 @@ static void f11_set_abs_params(struct rmi_function *fn, int index)
 	input_set_abs_params(input, ABS_MT_POSITION_Y,
 			y_min, y_max, 0, 0);
 	if (!sensor->type_a)
-		input_mt_init_slots(input, sensor->nbr_fingers);
+		input_mt_init_slots(input, sensor->nbr_fingers, 0);
 	if (IS_ENABLED(CONFIG_RMI4_F11_PEN) && sensor->sens_query.has_pen)
 		input_set_abs_params(input, ABS_MT_TOOL_TYPE,
 				     0, MT_TOOL_MAX, 0, 0);
