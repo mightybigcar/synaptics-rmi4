@@ -665,35 +665,23 @@ static int rmi_hid_probe(struct hid_device *hdev, const struct hid_device_id *id
 {
 	struct rmi_transport_device *xport = NULL;
 	struct rmi_hid_data *data = NULL;
-	unsigned int connect_mask = HID_CONNECT_DEFAULT;
+	unsigned int connect_mask = HID_CONNECT_HIDRAW | HID_CONNECT_HIDDEV;
 	int ret;
 
 	dev_dbg(&hdev->dev, "%s\n", __func__);
-
-	ret = hid_parse(hdev);
-	if (ret) {
-		hid_err(hdev, "parse failed\n");
-		goto err_free;
-	}
-
-	ret = hid_hw_start(hdev, connect_mask);
-	if (ret) {
-		hid_err(hdev, "hw start failed\n");
-		goto err_free;
-	}
 
 	xport = devm_kzalloc(&hdev->dev, sizeof(struct rmi_transport_device),
 				GFP_KERNEL);
 	if (!xport) {
 		ret = -ENOMEM;
-		goto hid_stop;
+		goto err;
 	}
 
 	data = devm_kzalloc(&hdev->dev, sizeof(struct rmi_hid_data),
 				GFP_KERNEL);
 	if (!data) {
 		ret =-ENOMEM;
-		goto hid_stop;
+		goto err;
 	}
 
 	data->xport = xport;
@@ -712,7 +700,7 @@ static int rmi_hid_probe(struct hid_device *hdev, const struct hid_device_id *id
 				* RMI_HID_INPUT_REPORT_QUEUE_LEN, GFP_KERNEL);
 	if (!data->input_queue) {
 		ret = -ENOMEM;
-		goto hid_stop;
+		goto err;
 	}
 
 	tp_platformdata.pm_data = hdev;
@@ -736,6 +724,18 @@ static int rmi_hid_probe(struct hid_device *hdev, const struct hid_device_id *id
 
 	dev_dbg(&hdev->dev, "Opening low level driver\n");
 	hdev->ll_driver->open(hdev);
+
+	ret = hid_parse(hdev);
+	if (ret) {
+		hid_err(hdev, "parse failed\n");
+		goto err;
+	}
+
+	ret = hid_hw_start(hdev, connect_mask);
+	if (ret) {
+		hid_err(hdev, "hw start failed\n");
+		goto err;
+	}
 
 	/* Allow incoming hid reports */
 	hid_device_io_start(hdev);
@@ -779,11 +779,9 @@ rmi_driver_probe_failed:
 
 rmi_read_failed:
 	hdev->ll_driver->close(hdev);
-
-hid_stop:
 	hid_hw_stop(hdev);
 
-err_free:
+err:
 	return ret;
 }
 
