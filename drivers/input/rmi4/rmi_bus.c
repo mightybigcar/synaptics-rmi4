@@ -29,7 +29,7 @@ static struct dentry *rmi_bus_debugfs_root;
 
 
 /*
- * *RMI Physical devices
+ * RMI Physical devices
  *
  * Physical RMI device consists of several functions serving particular
  * purpose. For example F11 is a 2D touch sensor while F10 is a generic
@@ -43,8 +43,8 @@ static void rmi_release_device(struct device *dev)
 }
 
 struct device_type rmi_device_type = {
-	.name = "rmi_sensor",
-	.release = rmi_release_device,
+	.name		= "rmi_sensor",
+	.release	= rmi_release_device,
 };
 EXPORT_SYMBOL_GPL(rmi_device_type);
 
@@ -178,7 +178,7 @@ static void rmi_function_setup_debugfs(struct rmi_function *fn)
 
 	snprintf(dirname, sizeof(dirname), "F%02X", fn->fd.function_number);
 	fn->debugfs_root = debugfs_create_dir(dirname,
-						fn->rmi_dev->debugfs_root);
+					      fn->rmi_dev->debugfs_root);
 	if (!fn->debugfs_root)
 		dev_warn(&fn->dev, "Failed to create debugfs dir.\n");
 }
