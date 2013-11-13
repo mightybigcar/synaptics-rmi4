@@ -74,21 +74,27 @@ struct rmi_driver_data {
 	void *data;
 };
 
+
+#define RMI_PDT_ENTRY_SIZE 6
+#define RMI_PDT_FUNCTION_VERSION_MASK	0x60
+#define RMI_PDT_INT_SOURCE_COUNT_MASK	0x07
+
 #define PDT_START_SCAN_LOCATION 0x00e9
 #define PDT_END_SCAN_LOCATION	0x0005
 #define RMI4_END_OF_PDT(id) ((id) == 0x00 || (id) == 0xff)
 
 struct pdt_entry {
-	u8 query_base_addr:8;
-	u8 command_base_addr:8;
-	u8 control_base_addr:8;
-	u8 data_base_addr:8;
-	u8 interrupt_source_count:3;
-	u8 bits3and4:2;
-	u8 function_version:2;
-	u8 bit7:1;
-	u8 function_number:8;
-} __attribute__((__packed__));
+	u8 query_base_addr;
+	u8 command_base_addr;
+	u8 control_base_addr;
+	u8 data_base_addr;
+	u8 interrupt_source_count;
+	u8 function_version;
+	u8 function_number;
+};
+
+int rmi_read_pdt_entry(struct rmi_device *rmi_dev, struct pdt_entry *entry,
+			   u16 pdt_address);
 
 #ifdef	CONFIG_RMI4_FWLIB
 extern void rmi4_fw_update(struct rmi_device *rmi_dev,
