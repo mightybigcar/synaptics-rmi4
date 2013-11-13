@@ -248,8 +248,8 @@ static ssize_t offset_read(struct file *filp, char __user *buffer, size_t size,
 	data->done = 1;
 
 	retval = snprintf(local_buf, size, "%u %u\n",
-			data->sensor->axis_align.offset_X,
-			data->sensor->axis_align.offset_Y);
+			data->sensor->axis_align.offset_x,
+			data->sensor->axis_align.offset_y);
 
 	if (retval <= 0 || copy_to_user(buffer, local_buf, retval))
 		retval = -EFAULT;
@@ -281,8 +281,8 @@ static ssize_t offset_write(struct file *filp, const char __user *buffer,
 	if (retval != 2)
 		return -EINVAL;
 
-	data->sensor->axis_align.offset_X = new_X;
-	data->sensor->axis_align.offset_Y = new_Y;
+	data->sensor->axis_align.offset_x = new_X;
+	data->sensor->axis_align.offset_y = new_Y;
 
 	return size;
 }
@@ -311,10 +311,10 @@ static ssize_t clip_read(struct file *filp, char __user *buffer, size_t size,
 	data->done = 1;
 
 	retval = snprintf(local_buf, size, "%u %u %u %u\n",
-			data->sensor->axis_align.clip_X_low,
-			data->sensor->axis_align.clip_X_high,
-			data->sensor->axis_align.clip_Y_low,
-			data->sensor->axis_align.clip_Y_high);
+			data->sensor->axis_align.clip_x_low,
+			data->sensor->axis_align.clip_x_high,
+			data->sensor->axis_align.clip_y_low,
+			data->sensor->axis_align.clip_y_high);
 
 	if (retval <= 0 || copy_to_user(buffer, local_buf, retval))
 		retval = -EFAULT;
@@ -350,10 +350,10 @@ static ssize_t clip_write(struct file *filp, const char __user *buffer,
 	if (new_X_low >= new_X_high || new_Y_low >= new_Y_high)
 		return -EINVAL;
 
-	data->sensor->axis_align.clip_X_low = new_X_low;
-	data->sensor->axis_align.clip_X_high = new_X_high;
-	data->sensor->axis_align.clip_Y_low = new_Y_low;
-	data->sensor->axis_align.clip_Y_high = new_Y_high;
+	data->sensor->axis_align.clip_x_low = new_X_low;
+	data->sensor->axis_align.clip_x_high = new_X_high;
+	data->sensor->axis_align.clip_y_low = new_Y_low;
+	data->sensor->axis_align.clip_y_high = new_Y_high;
 
 	return size;
 }
