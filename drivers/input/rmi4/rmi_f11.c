@@ -159,8 +159,8 @@ static void rmi_f11_abs_pos_report(struct f11_data *f11,
 	 * fingers. */
 	if (IS_ENABLED(CONFIG_RMI4_F11_PEN) &&
 			get_tool_type(sensor, finger_state) == MT_TOOL_PEN) {
-		w_max = max((u16) 1, w_max);
-		w_min = max((u16) 1, w_min);
+		w_max = max_t(u16, 1, w_max);
+		w_min = max_t(u16, 1, w_min);
 	}
 
 	if (sensor->type_a) {
