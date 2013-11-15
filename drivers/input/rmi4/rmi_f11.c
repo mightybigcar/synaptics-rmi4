@@ -579,10 +579,10 @@ static int rmi_f11_get_query_parameters(struct rmi_device *rmi_dev,
 /* This operation is done in a number of places, so we have a handy routine
  * for it.
  */
-static void f11_set_abs_params(struct rmi_function *fn, int index)
+static void f11_set_abs_params(struct rmi_function *fn)
 {
 	struct f11_data *f11 = fn->data;
-	struct f11_2d_sensor *sensor = &f11->sensors[index];
+	struct f11_2d_sensor *sensor = &f11->sensor;
 	struct input_dev *input = sensor->input;
 	/* These two lines are not doing what we want them to.  So we use
 	 * some shifts instead.
@@ -663,8 +663,8 @@ static int rmi_f11_initialize(struct rmi_function *fn)
 	u16 control_base_addr;
 	u16 max_x_pos, max_y_pos, temp;
 	int rc;
-	int i;
 	struct rmi_device_platform_data *pdata = to_rmi_platform_data(rmi_dev);
+	struct f11_2d_sensor *sensor;
 	u8 buf;
 
 	f11 = devm_kzalloc(&fn->dev, sizeof(struct f11_data), GFP_KERNEL);
@@ -681,7 +681,6 @@ static int rmi_f11_initialize(struct rmi_function *fn)
 	if (rc < 0)
 		return rc;
 
-	f11->nr_sensors = buf & RMI_F11_NR_SENSORS_MASK;
 	f11->has_query9 = !!(buf & RMI_F11_HAS_QUERY9);
 	f11->has_query11 = !!(buf & RMI_F11_HAS_QUERY11);
 	f11->has_query12 = !!(buf & RMI_F11_HAS_QUERY12);
@@ -689,80 +688,76 @@ static int rmi_f11_initialize(struct rmi_function *fn)
 	f11->has_query28 = !!(buf & RMI_F11_HAS_QUERY28);
 
 	query_offset = (query_base_addr + 1);
-	/* Increase with one since number of sensors is zero based */
-	for (i = 0; i < (f11->nr_sensors + 1); i++) {
-		struct f11_2d_sensor *sensor = &f11->sensors[i];
-		sensor->sensor_index = i;
-		sensor->fn = fn;
+	sensor = &f11->sensor;
+	sensor->fn = fn;
 
-		rc = rmi_f11_get_query_parameters(rmi_dev, f11,
-				&sensor->sens_query, query_offset);
+	rc = rmi_f11_get_query_parameters(rmi_dev, f11,
+			&sensor->sens_query, query_offset);
+	if (rc < 0)
+		return rc;
+	query_offset += rc;
+
+	rc = f11_read_control_regs(fn, &f11->dev_controls,
+			control_base_addr);
+	if (rc < 0) {
+		dev_err(&fn->dev,
+			"Failed to read F11 control params.\n");
+		return rc;
+	}
+
+	if (pdata->f11_sensor_data) {
+		sensor->axis_align =
+			pdata->f11_sensor_data->axis_align;
+		sensor->type_a = pdata->f11_sensor_data->type_a;
+		sensor->sensor_type =
+				pdata->f11_sensor_data->sensor_type;
+	}
+
+	rc = rmi_read_block(rmi_dev,
+		control_base_addr + F11_CTRL_SENSOR_MAX_X_POS_OFFSET,
+		(u8 *)&max_x_pos, sizeof(max_x_pos));
+	if (rc < 0)
+		return rc;
+
+	rc = rmi_read_block(rmi_dev,
+		control_base_addr + F11_CTRL_SENSOR_MAX_Y_POS_OFFSET,
+		(u8 *)&max_y_pos, sizeof(max_y_pos));
+	if (rc < 0)
+		return rc;
+
+	if (sensor->axis_align.swap_axes) {
+		temp = max_x_pos;
+		max_x_pos = max_y_pos;
+		max_y_pos = temp;
+	}
+	sensor->max_x = max_x_pos;
+	sensor->max_y = max_y_pos;
+
+	rc = f11_2d_construct_data(sensor);
+	if (rc < 0)
+		return rc;
+
+	ctrl = &f11->dev_controls;
+	if (sensor->axis_align.delta_x_threshold) {
+		ctrl->ctrl0_9[RMI_F11_DELTA_X_THRESHOLD] =
+			sensor->axis_align.delta_x_threshold;
+		rc = rmi_write_block(rmi_dev, ctrl->ctrl0_9_address,
+				     ctrl->ctrl0_9,
+				     RMI_F11_CTRL_REG_COUNT);
 		if (rc < 0)
-			return rc;
-		query_offset += rc;
+			dev_warn(&fn->dev, "Failed to write to delta_x_threshold. Code: %d.\n",
+				rc);
 
-		rc = f11_read_control_regs(fn, &f11->dev_controls,
-				control_base_addr);
-		if (rc < 0) {
-			dev_err(&fn->dev,
-				"Failed to read F11 control params.\n");
-			return rc;
-		}
+	}
 
-		if (i < pdata->f11_sensor_count) {
-			sensor->axis_align =
-				pdata->f11_sensor_data[i].axis_align;
-			sensor->type_a = pdata->f11_sensor_data[i].type_a;
-			sensor->sensor_type =
-					pdata->f11_sensor_data[i].sensor_type;
-		}
-
-		rc = rmi_read_block(rmi_dev,
-			control_base_addr + F11_CTRL_SENSOR_MAX_X_POS_OFFSET,
-			(u8 *)&max_x_pos, sizeof(max_x_pos));
+	if (sensor->axis_align.delta_y_threshold) {
+		ctrl->ctrl0_9[RMI_F11_DELTA_Y_THRESHOLD] =
+			sensor->axis_align.delta_y_threshold;
+		rc = rmi_write_block(rmi_dev, ctrl->ctrl0_9_address,
+				ctrl->ctrl0_9, RMI_F11_CTRL_REG_COUNT);
 		if (rc < 0)
-			return rc;
-
-		rc = rmi_read_block(rmi_dev,
-			control_base_addr + F11_CTRL_SENSOR_MAX_Y_POS_OFFSET,
-			(u8 *)&max_y_pos, sizeof(max_y_pos));
-		if (rc < 0)
-			return rc;
-
-		if (sensor->axis_align.swap_axes) {
-			temp = max_x_pos;
-			max_x_pos = max_y_pos;
-			max_y_pos = temp;
-		}
-		sensor->max_x = max_x_pos;
-		sensor->max_y = max_y_pos;
-
-		rc = f11_2d_construct_data(sensor);
-		if (rc < 0)
-			return rc;
-
-		ctrl = &f11->dev_controls;
-		if (sensor->axis_align.delta_x_threshold) {
-			ctrl->ctrl0_9[RMI_F11_DELTA_X_THRESHOLD] =
-				sensor->axis_align.delta_x_threshold;
-			rc = rmi_write_block(rmi_dev, ctrl->ctrl0_9_address,
-					     ctrl->ctrl0_9,
-					     RMI_F11_CTRL_REG_COUNT);
-			if (rc < 0)
-				dev_warn(&fn->dev, "Failed to write to delta_x_threshold %d. Code: %d.\n",
-					i, rc);
-
-		}
-
-		if (sensor->axis_align.delta_y_threshold) {
-			ctrl->ctrl0_9[RMI_F11_DELTA_Y_THRESHOLD] =
-				sensor->axis_align.delta_y_threshold;
-			rc = rmi_write_block(rmi_dev, ctrl->ctrl0_9_address,
-					ctrl->ctrl0_9, RMI_F11_CTRL_REG_COUNT);
-			if (rc < 0)
-				dev_warn(&fn->dev, "Failed to write to delta_y_threshold %d. Code: %d.\n",
-					i, rc);
-		}
+			dev_warn(&fn->dev, "Failed to write to delta_y_threshold. Code: %d.\n",
+				rc);
 	}
 
 	mutex_init(&f11->dev_controls_mutex);
@@ -777,113 +772,104 @@ static int rmi_f11_register_devices(struct rmi_function *fn)
 	struct input_dev *input_dev_mouse;
 	struct rmi_driver_data *driver_data = dev_get_drvdata(&rmi_dev->dev);
 	struct rmi_driver *driver = rmi_dev->driver;
-	int sensors_itertd = 0;
-	int i;
+	struct f11_2d_sensor *sensor = &f11->sensor;
 	int rc;
 	int board, version;
 
 	board = driver_data->board;
 	version = driver_data->rev;
 
-	for (i = 0; i < (f11->nr_sensors + 1); i++) {
-		struct f11_2d_sensor *sensor = &f11->sensors[i];
-		sensors_itertd = i;
-		input_dev = input_allocate_device();
-		if (!input_dev) {
+	input_dev = input_allocate_device();
+	if (!input_dev) {
+		rc = -ENOMEM;
+		goto error_unregister;
+	}
+
+	sensor->input = input_dev;
+	if (driver->set_input_params) {
+		rc = driver->set_input_params(rmi_dev, input_dev);
+		if (rc < 0) {
+			dev_err(&fn->dev,
+			"%s: Error in setting input device.\n",
+			__func__);
+			goto error_unregister;
+		}
+	}
+	snprintf(sensor->input_phys, NAME_BUFFER_SIZE,
+		 "%s.abs/input0", dev_name(&fn->dev));
+	input_dev->phys = sensor->input_phys;
+	input_dev->dev.parent = &rmi_dev->dev;
+	input_set_drvdata(input_dev, f11);
+
+	set_bit(EV_SYN, input_dev->evbit);
+	set_bit(EV_ABS, input_dev->evbit);
+	input_set_capability(input_dev, EV_KEY, BTN_TOUCH);
+
+	f11_set_abs_params(fn);
+
+	if (sensor->sens_query.has_rel) {
+		set_bit(EV_REL, input_dev->evbit);
+		set_bit(REL_X, input_dev->relbit);
+		set_bit(REL_Y, input_dev->relbit);
+	}
+	rc = input_register_device(input_dev);
+	if (rc < 0) {
+		input_free_device(input_dev);
+		sensor->input = NULL;
+		goto error_unregister;
+	}
+
+	if (sensor->sens_query.has_rel) {
+		/*create input device for mouse events  */
+		input_dev_mouse = input_allocate_device();
+		if (!input_dev_mouse) {
 			rc = -ENOMEM;
 			goto error_unregister;
 		}
 
-		sensor->input = input_dev;
+		sensor->mouse_input = input_dev_mouse;
 		if (driver->set_input_params) {
-			rc = driver->set_input_params(rmi_dev, input_dev);
+			rc = driver->set_input_params(rmi_dev,
+				input_dev_mouse);
 			if (rc < 0) {
-				dev_err(&fn->dev,
-				"%s: Error in setting input device.\n",
+				dev_err(&fn->dev, "%s: Error in setting input device.\n",
 				__func__);
 				goto error_unregister;
 			}
 		}
-		snprintf(sensor->input_phys, NAME_BUFFER_SIZE,
-			 "%s.abs%d/input0", dev_name(&fn->dev), i);
-		input_dev->phys = sensor->input_phys;
-		input_dev->dev.parent = &rmi_dev->dev;
-		input_set_drvdata(input_dev, f11);
+		snprintf(sensor->input_phys_mouse, NAME_BUFFER_SIZE,
+			 "%s.rel/input0", dev_name(&fn->dev));
+		set_bit(EV_REL, input_dev_mouse->evbit);
+		set_bit(REL_X, input_dev_mouse->relbit);
+		set_bit(REL_Y, input_dev_mouse->relbit);
 
-		set_bit(EV_SYN, input_dev->evbit);
-		set_bit(EV_ABS, input_dev->evbit);
-		input_set_capability(input_dev, EV_KEY, BTN_TOUCH);
+		set_bit(BTN_MOUSE, input_dev_mouse->evbit);
+		/* Register device's buttons and keys */
+		set_bit(EV_KEY, input_dev_mouse->evbit);
+		set_bit(BTN_LEFT, input_dev_mouse->keybit);
+		set_bit(BTN_MIDDLE, input_dev_mouse->keybit);
+		set_bit(BTN_RIGHT, input_dev_mouse->keybit);
 
-		f11_set_abs_params(fn, i);
-
-		if (sensor->sens_query.has_rel) {
-			set_bit(EV_REL, input_dev->evbit);
-			set_bit(REL_X, input_dev->relbit);
-			set_bit(REL_Y, input_dev->relbit);
-		}
-		rc = input_register_device(input_dev);
+		rc = input_register_device(input_dev_mouse);
 		if (rc < 0) {
-			input_free_device(input_dev);
-			sensor->input = NULL;
+			input_free_device(input_dev_mouse);
+			sensor->mouse_input = NULL;
 			goto error_unregister;
 		}
 
-		if (sensor->sens_query.has_rel) {
-			/*create input device for mouse events  */
-			input_dev_mouse = input_allocate_device();
-			if (!input_dev_mouse) {
-				rc = -ENOMEM;
-				goto error_unregister;
-			}
-
-			sensor->mouse_input = input_dev_mouse;
-			if (driver->set_input_params) {
-				rc = driver->set_input_params(rmi_dev,
-					input_dev_mouse);
-				if (rc < 0) {
-					dev_err(&fn->dev, "%s: Error in setting input device.\n",
-					__func__);
-					goto error_unregister;
-				}
-			}
-			snprintf(sensor->input_phys_mouse, NAME_BUFFER_SIZE,
-				 "%s.rel%d/input0", dev_name(&fn->dev), i);
-			set_bit(EV_REL, input_dev_mouse->evbit);
-			set_bit(REL_X, input_dev_mouse->relbit);
-			set_bit(REL_Y, input_dev_mouse->relbit);
-
-			set_bit(BTN_MOUSE, input_dev_mouse->evbit);
-			/* Register device's buttons and keys */
-			set_bit(EV_KEY, input_dev_mouse->evbit);
-			set_bit(BTN_LEFT, input_dev_mouse->keybit);
-			set_bit(BTN_MIDDLE, input_dev_mouse->keybit);
-			set_bit(BTN_RIGHT, input_dev_mouse->keybit);
-
-			rc = input_register_device(input_dev_mouse);
-			if (rc < 0) {
-				input_free_device(input_dev_mouse);
-				sensor->mouse_input = NULL;
-				goto error_unregister;
-			}
-
-			set_bit(BTN_RIGHT, input_dev_mouse->keybit);
-		}
-
+		set_bit(BTN_RIGHT, input_dev_mouse->keybit);
 	}
 
 	return 0;
 
 error_unregister:
-	for (; sensors_itertd > 0; sensors_itertd--) {
-		if (f11->sensors[sensors_itertd].input) {
-			if (f11->sensors[sensors_itertd].mouse_input) {
-				input_unregister_device(
-				   f11->sensors[sensors_itertd].mouse_input);
-				f11->sensors[sensors_itertd].mouse_input = NULL;
-			}
-			input_unregister_device(f11->sensors[i].input);
-			f11->sensors[i].input = NULL;
+	if (f11->sensor.input) {
+		if (f11->sensor.mouse_input) {
+			input_unregister_device(f11->sensor.mouse_input);
+			f11->sensor.mouse_input = NULL;
 		}
+		input_unregister_device(f11->sensor.input);
+		f11->sensor.input = NULL;
 	}
 
 	return rc;
@@ -892,28 +878,22 @@ error_unregister:
 static void rmi_f11_free_devices(struct rmi_function *fn)
 {
 	struct f11_data *f11 = fn->data;
-	int i;
 
-	for (i = 0; i < (f11->nr_sensors + 1); i++) {
-		if (f11->sensors[i].input)
-			input_unregister_device(f11->sensors[i].input);
-		if (f11->sensors[i].mouse_input)
-			input_unregister_device(f11->sensors[i].mouse_input);
-	}
+	if (f11->sensor.input)
+		input_unregister_device(f11->sensor.input);
+	if (f11->sensor.mouse_input)
+		input_unregister_device(f11->sensor.mouse_input);
 }
 
 static int rmi_f11_config(struct rmi_function *fn)
 {
 	struct f11_data *f11 = fn->data;
-	int i;
 	int rc;
 
-	for (i = 0; i < (f11->nr_sensors + 1); i++) {
-		rc = f11_write_control_regs(fn, &f11->sensors[i].sens_query,
-				&f11->dev_controls, fn->fd.query_base_addr);
-		if (rc < 0)
-			return rc;
-	}
+	rc = f11_write_control_regs(fn, &f11->sensor.sens_query,
+			&f11->dev_controls, fn->fd.query_base_addr);
+	if (rc < 0)
+		return rc;
 
 	return 0;
 }
@@ -926,21 +906,18 @@ int rmi_f11_attention(struct rmi_function *fn,
 	u16 data_base_addr = fn->fd.data_base_addr;
 	u16 data_base_addr_offset = 0;
 	int error;
-	int i;
 
 	f11->report_count++;
 
-	for (i = 0; i < f11->nr_sensors + 1; i++) {
-		error = rmi_read_block(rmi_dev,
-				data_base_addr + data_base_addr_offset,
-				f11->sensors[i].data_pkt,
-				f11->sensors[i].pkt_size);
-		if (error < 0)
-			return error;
+	error = rmi_read_block(rmi_dev,
+			data_base_addr + data_base_addr_offset,
+			f11->sensor.data_pkt,
+			f11->sensor.pkt_size);
+	if (error < 0)
+		return error;
 
-		rmi_f11_finger_handler(f11, &f11->sensors[i]);
-		data_base_addr_offset += f11->sensors[i].pkt_size;
-	}
+	rmi_f11_finger_handler(f11, &f11->sensor);
+	data_base_addr_offset += f11->sensor.pkt_size;
 
 	return 0;
 }

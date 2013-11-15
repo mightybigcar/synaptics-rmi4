@@ -222,12 +222,9 @@ struct rmi_device_platform_data_spi {
  * @spi_data - override default settings for SPI delays and SSB management (see
  * above).
  *
- * @f11_sensor_data - an array of platform data for individual F11 2D sensors.
- * @f11_sensor_count - the length of f11_sensor_data array.  Extra entries will
- * be ignored; if there are too few entries, all settings for the additional
- * sensors will be defaulted.
+ * @f11_sensor_data - platform data for the F11 2D sensor.
  * @f11_rezero_wait - if non-zero, this is how may milliseconds the F11 2D
- * sensor(s) will wait before being be rezeroed on exit from suspend.  If
+ * sensor will wait before being be rezeroed on exit from suspend.  If
  * this value is zero, the F11 2D sensor(s) will not be rezeroed on resume.
  * @pre_suspend - this will be called before any other suspend operations are
  * done.
@@ -266,7 +263,6 @@ struct rmi_device_platform_data {
 
 	/* function handler pdata */
 	struct rmi_f11_sensor_data *f11_sensor_data;
-	u8 f11_sensor_count;
 	u16 f11_rezero_wait;
 	struct rmi_f01_power_management power_management;
 	struct rmi_button_map *f19_button_map;

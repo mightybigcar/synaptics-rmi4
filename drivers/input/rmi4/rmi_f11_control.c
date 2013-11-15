@@ -25,7 +25,7 @@ struct f11_sensor_ctl_data {
 struct f11_ctl_data {
 	struct rmi_function *f11_dev;
 	struct rmi_control_handler_data handler_data;
-	struct f11_sensor_ctl_data sensor_data[F11_MAX_NUM_OF_SENSORS];
+	struct f11_sensor_ctl_data sensor_data;
 };
 
 #ifdef CONFIG_RMI4_DEBUG
@@ -549,7 +549,7 @@ static ssize_t query_write(struct file *filp, const char __user *buffer,
 	struct f11_debugfs_data *data = filp->private_data;
 	struct f11_data *f11 = data->fn->data;
 	struct device *dev = &data->fn->dev;
-	struct f11_2d_sensor_queries *props = &f11->sensors[0].sens_query;
+	struct f11_2d_sensor_queries *props = &f11->sensor.sens_query;
 
 	retval = copy_from_user(buf, buffer, size);
 	if (retval)
@@ -561,7 +561,6 @@ static ssize_t query_write(struct file *filp, const char __user *buffer,
 	dev_dbg(&data->fn->dev, "QUERY %d\n", query);
 	switch (query) {
 	case 0:
-		dev_dbg(dev, "Nr sensors: %d\n", f11->nr_sensors);
 		dev_dbg(dev, "has_query9? %d\n", f11->has_query9);
 		dev_dbg(dev, "has_query11? %d\n", f11->has_query11);
 		dev_dbg(dev, "has_query12? %d\n", f11->has_query12);
@@ -847,7 +846,6 @@ static struct rmi_control_handler_data *f11_ctl_attach(struct device *dev,
 	struct rmi_function *fn = to_rmi_function(dev);
 	struct f11_data *f11 = fn->data;
 	struct f11_ctl_data *ctl_data;
-	int i;
 
 	dev_dbg(dev, "%s called.\n", __func__);
 
@@ -856,11 +854,8 @@ static struct rmi_control_handler_data *f11_ctl_attach(struct device *dev,
 		return NULL;
 	ctl_data->f11_dev = fn;
 
-	/* Increase with one since number of sensors is zero based */
-	for (i = 0; i < (f11->nr_sensors + 1); i++) {
-		ctl_data->sensor_data[i].sensor = &f11->sensors[i];
-		rmi_f11_setup_sensor_debugfs(&ctl_data->sensor_data[i]);
-	}
+	ctl_data->sensor_data.sensor = &f11->sensor;
+	rmi_f11_setup_sensor_debugfs(&ctl_data->sensor_data);
 
 	if (sysfs_create_group(&fn->dev.kobj, &fn11_attrs) < 0)
 		dev_warn(&fn->dev, "Failed to create query sysfs files.");
