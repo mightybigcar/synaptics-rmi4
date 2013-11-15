@@ -28,6 +28,7 @@
 #include <linux/rmi.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
+#include <linux/kmod.h>
 
 #include "rmi_bus.h"
 #include "rmi_driver.h"
@@ -519,6 +520,7 @@ static int create_function_dev(struct rmi_device *rmi_dev,
 	int retval = 0;
 	struct device *dev = &rmi_dev->dev;
 	struct rmi_device_platform_data *pdata;
+	char fn_modname[16];
 
 	pdata = to_rmi_platform_data(rmi_dev);
 
@@ -545,6 +547,13 @@ static int create_function_dev(struct rmi_device *rmi_dev,
 		dev_err(dev, "%s: Failed to create irq_mask for F%02X.\n",
 			__func__, pdt->function_number);
 		return retval;
+	}
+
+	snprintf(fn_modname,sizeof(fn_modname),"rmi_f%02X", pdt->function_number);
+	retval= request_module(fn_modname);
+	if (retval < 0) {
+		dev_warn(dev, "%s: request module failed for rmi_f%02X.ko :%d\n",
+			__func__, pdt->function_number, retval);
 	}
 
 	retval = rmi_register_function_dev(fn);
