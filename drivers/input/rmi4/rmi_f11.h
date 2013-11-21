@@ -9,46 +9,28 @@
 #ifndef RMI_F11_CONTROL_H
 #define RMI_F11_CONTROL_H
 
-#define F11_MAX_NUM_OF_SENSORS 8
 
 #define NAME_BUFFER_SIZE 256
 
 /** A note about RMI4 F11 register structure.
  *
- *  There may be one or more individual 2D touch surfaces associated with an
- * instance for F11.  For example, a handheld device might have a touchscreen
- * display on the front, and a touchpad on the back.  F11 represents these touch
- * surfaces as individual sensors, up to 7 on a given RMI4 device.
- *
  * The properties for
  * a given sensor are described by its query registers.  The number of query
  * registers and the layout of their contents are described by the F11 device
- * queries as well as the per-sensor query information.  The query registers
- * for sensor[n+1] immediately follow those for sensor[n], so the start address
- * of the sensor[n+1] queries can only be computed if you know the size of the
- * sensor[n] queries.  Because each of the sensors may have different
- * properties, the size of the query registers for each sensor must be
- * calculated on a sensor by sensor basis.
+ * queries as well as the sensor query information.
  *
  * Similarly, each sensor has control registers that govern its behavior.  The
  * size and layout of the control registers for a given sensor can be determined
- * by parsing that sensors query registers.  The control registers for
- * sensor[n+1] immediately follow those for sensor[n], so you can only know
- * the start address for the sensor[n+1] controls if you know the size (and
- * location) of the sensor[n] controls.
+ * by parsing that sensors query registers.
  *
  * And in a likewise fashion, each sensor has data registers where it reports
  * its touch data and other interesting stuff.  The size and layout of a
  * sensors data registers must be determined by parsing its query registers.
- * The data registers for sensor[n+1] immediately follow those for sensor[n],
- * so you can only know the start address for the sensor[n+1] controls if you
- * know the size (and location) of the sensor[n] controls.
  *
  * The short story is that we need to read and parse a lot of query
- * registers in order to determine the attributes of a sensor[0].  Then
+ * registers in order to determine the attributes of a sensor.  Then
  * we need to use that data to compute the size of the control and data
- * registers for sensor[0].  Once we have that figured out, we can then do
- * the same thing for each subsequent sensor.
+ * registers for sensor.
  *
  * The end result is that we have a number of structs that aren't used to
  * directly generate the input events, but their size, location and contents
@@ -65,10 +47,6 @@
  */
 #define RMI_F11_REZERO  0x01
 
-/** Nr sensors will be going away in the near future, but for now we still
- * need to worry about it.
- */
-#define RMI_F11_NR_SENSORS_MASK		0x07
 #define RMI_F11_HAS_QUERY9		(1 << 3)
 #define RMI_F11_HAS_QUERY11		(1 << 4)
 #define RMI_F11_HAS_QUERY12		(1 << 5)
@@ -532,7 +510,6 @@ struct f11_2d_sensor {
  * @sensors - per sensor data structures.
  */
 struct f11_data {
-	u8 nr_sensors;
 	bool has_query9;
 	bool has_query11;
 	bool has_query12;
@@ -542,6 +519,6 @@ struct f11_data {
 	struct mutex dev_controls_mutex;
 	u16 rezero_wait_ms;
 	u64 report_count;
-	struct f11_2d_sensor sensors[F11_MAX_NUM_OF_SENSORS];
+	struct f11_2d_sensor sensor;
 };
 #endif

@@ -487,6 +487,31 @@ int rmi_driver_irq_get_mask(struct rmi_device *rmi_dev,
 	return 0;
 }
 
+int rmi_read_pdt_entry(struct rmi_device *rmi_dev, struct pdt_entry *entry,
+			   u16 pdt_address)
+{
+	u8 buf[RMI_PDT_ENTRY_SIZE];
+	int error;
+
+	error = rmi_read_block(rmi_dev, pdt_address, buf, RMI_PDT_ENTRY_SIZE);
+	if (error < 0) {
+		dev_err(&rmi_dev->dev, "Read PDT entry at %#06x failed, code: %d.\n",
+				pdt_address, error);
+		return error;
+	}
+
+	entry->query_base_addr = buf[0];
+	entry->command_base_addr = buf[1];
+	entry->control_base_addr = buf[2];
+	entry->data_base_addr = buf[3];
+	entry->interrupt_source_count = buf[4] & RMI_PDT_INT_SOURCE_COUNT_MASK;
+	entry->function_version = (buf[4] & RMI_PDT_FUNCTION_VERSION_MASK) >> 5;
+	entry->function_number = buf[5];
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(rmi_read_pdt_entry);
+
 static void copy_pdt_entry_to_fd(struct pdt_entry *pdt,
 				 struct rmi_function_descriptor *fd,
 				 u16 page_start)
@@ -613,14 +638,10 @@ static int rmi_device_reflash(struct rmi_device *rmi_dev)
 		u16 pdt_start = page_start + PDT_START_SCAN_LOCATION;
 		u16 pdt_end = page_start + PDT_END_SCAN_LOCATION;
 		done = true;
-		for (i = pdt_start; i >= pdt_end ; i -= sizeof(pdt_entry)) {
-			retval = rmi_read_block(rmi_dev, i, &pdt_entry,
-					       sizeof(pdt_entry));
-			if (retval != sizeof(pdt_entry)) {
-				dev_err(dev, "Read PDT entry at %#06x failed, code = %d.\n",
-						i, retval);
+		for (i = pdt_start; i >= pdt_end ; i -= RMI_PDT_ENTRY_SIZE) {
+			retval = rmi_read_pdt_entry(rmi_dev, &pdt_entry, i);
+			if (retval < 0)
 				return retval;
-			}
 
 			if (RMI4_END_OF_PDT(pdt_entry.function_number))
 				break;
@@ -684,14 +705,10 @@ static int rmi_device_reset(struct rmi_device *rmi_dev)
 		u16 pdt_end = page_start + PDT_END_SCAN_LOCATION;
 		done = true;
 
-		for (i = pdt_start; i >= pdt_end; i -= sizeof(pdt_entry)) {
-			error = rmi_read_block(rmi_dev, i, &pdt_entry,
-					       sizeof(pdt_entry));
-			if (error != sizeof(pdt_entry)) {
-				dev_err(dev, "Read PDT entry at %#06x failed, code = %d.\n",
-						i, error);
+		for (i = pdt_start; i >= pdt_end; i -= RMI_PDT_ENTRY_SIZE) {
+			error = rmi_read_pdt_entry(rmi_dev, &pdt_entry, i);
+			if (error < 0)
 				return error;
-			}
 
 			if (RMI4_END_OF_PDT(pdt_entry.function_number))
 				break;
@@ -719,16 +736,14 @@ static int rmi_device_reset(struct rmi_device *rmi_dev)
 
 static int rmi_count_irqs(struct rmi_device *rmi_dev)
 {
-	struct rmi_driver_data *data;
+	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
 	struct pdt_entry pdt_entry;
 	int page;
-	struct device *dev = &rmi_dev->dev;
 	int irq_count = 0;
 	bool done = false;
 	int i;
 	int retval;
 
-	data = dev_get_drvdata(&rmi_dev->dev);
 	mutex_lock(&data->pdt_mutex);
 
 	for (page = 0; (page <= RMI4_MAX_PAGE) && !done; page++) {
@@ -737,14 +752,10 @@ static int rmi_count_irqs(struct rmi_device *rmi_dev)
 		u16 pdt_end = page_start + PDT_END_SCAN_LOCATION;
 
 		done = true;
-		for (i = pdt_start; i >= pdt_end; i -= sizeof(pdt_entry)) {
-			retval = rmi_read_block(rmi_dev, i, &pdt_entry,
-					       sizeof(pdt_entry));
-			if (retval != sizeof(pdt_entry)) {
-				dev_err(dev, "Read of PDT entry at %#06x failed.\n",
-					i);
+		for (i = pdt_start; i >= pdt_end; i -= RMI_PDT_ENTRY_SIZE) {
+			retval = rmi_read_pdt_entry(rmi_dev, &pdt_entry, i);
+			if (retval < 0)
 				goto error_exit;
-			}
 
 			if (RMI4_END_OF_PDT(pdt_entry.function_number))
 				break;
@@ -788,19 +799,15 @@ static int rmi_scan_pdt(struct rmi_device *rmi_dev)
 		u16 pdt_end = page_start + PDT_END_SCAN_LOCATION;
 
 		done = true;
-		for (i = pdt_start; i >= pdt_end; i -= sizeof(pdt_entry)) {
-			retval = rmi_read_block(rmi_dev, i, &pdt_entry,
-					       sizeof(pdt_entry));
-			if (retval != sizeof(pdt_entry)) {
-				dev_err(dev, "Read of PDT entry at %#06x failed.\n",
-					i);
+		for (i = pdt_start; i >= pdt_end; i -= RMI_PDT_ENTRY_SIZE) {
+			retval = rmi_read_pdt_entry(rmi_dev, &pdt_entry, i);
+			if (retval < 0)
 				goto error_exit;
-			}
 
 			if (RMI4_END_OF_PDT(pdt_entry.function_number))
 				break;
 
-			dev_dbg(dev, "Found F%02X on page %#04x\n",
+			dev_dbg(dev, "Found F%02X on page %#04x.\n",
 					pdt_entry.function_number, page);
 			done = false;
 
@@ -830,7 +837,7 @@ static int f01_notifier_call(struct notifier_block *nb,
 	struct device *dev = data;
 	struct rmi_function *fn;
 
-	if (dev->type != &rmi_function_type)
+	if (!rmi_is_function_device(dev))
 		return 0;
 
 	fn = to_rmi_function(dev);
@@ -861,7 +868,7 @@ static int rmi_driver_suspend(struct device *dev)
 
 	mutex_lock(&data->suspend_mutex);
 
-	if (!IS_ENABLED(CONFIG_HAS_EARLYSUSPEND) && data->pre_suspend) {
+	if (data->pre_suspend) {
 		retval = data->pre_suspend(data->pm_data);
 		if (retval)
 			goto exit;
@@ -896,7 +903,7 @@ static int rmi_driver_resume(struct device *dev)
 		goto exit;
 
 
-	if (!IS_ENABLED(CONFIG_HAS_EARLYSUSPEND) && data->post_resume) {
+	if (data->post_resume) {
 		retval = data->post_resume(data->pm_data);
 		if (retval)
 			dev_err(&rmi_dev->dev, "Post resume failed with %d.\n",
@@ -908,57 +915,12 @@ exit:
 	return retval;
 }
 
-#if defined(CONFIG_HAS_EARLYSUSPEND)
 
-static void rmi_driver_early_suspend(struct early_suspend *h)
-{
-	struct rmi_device *rmi_dev =
-	    container_of(h, struct rmi_device, early_suspend_handler);
-	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
-	int retval = 0;
-
-	mutex_lock(&data->suspend_mutex);
-
-	if (data->pre_suspend) {
-		retval = data->pre_suspend(data->pm_data);
-		if (retval)
-			dev_err(&rmi_dev->dev, "Presuspend failed with %d.\n",
-				retval);
-	}
-
-	mutex_unlock(&data->suspend_mutex);
-}
-
-static void rmi_driver_late_resume(struct early_suspend *h)
-{
-	struct rmi_device *rmi_dev =
-	    container_of(h, struct rmi_device, early_suspend_handler);
-	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
-	int retval = 0;
-
-	mutex_lock(&data->suspend_mutex);
-
-
-	if (data->post_resume) {
-		retval = data->post_resume(data->pm_data);
-		if (retval)
-			dev_err(&rmi_dev->dev, "Post resume failed with %d.\n",
-				retval);
-	}
-
-	mutex_unlock(&data->suspend_mutex);
-}
-#endif /* defined(CONFIG_HAS_EARLYSUSPEND) */
-
-#endif /* CONFIG_PM */
+#endif /* CONFIG_PM_SLEEP */
 
 static int rmi_driver_remove(struct rmi_device *rmi_dev)
 {
 	disable_sensor(rmi_dev);
-
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	unregister_early_suspend(&rmi_dev->early_suspend_handler);
-#endif
 
 	rmi_free_function_list(rmi_dev);
 	return 0;
@@ -1114,16 +1076,6 @@ static int rmi_driver_probe(struct device *dev)
 		data->post_resume = pdata->post_resume;
 
 		mutex_init(&data->suspend_mutex);
-
-#ifdef CONFIG_HAS_EARLYSUSPEND
-		rmi_dev->early_suspend_handler.level =
-			EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1;
-		rmi_dev->early_suspend_handler.suspend =
-					rmi_driver_early_suspend;
-		rmi_dev->early_suspend_handler.resume =
-					rmi_driver_late_resume;
-		register_early_suspend(&rmi_dev->early_suspend_handler);
-#endif
 	}
 
 	if (data->f01_dev->dev.driver) {

@@ -12,7 +12,6 @@
 
 #include <linux/kernel.h>
 #include <linux/device.h>
-#include <linux/earlysuspend.h>
 #include <linux/interrupt.h>
 #include <linux/input.h>
 #include <linux/list.h>
@@ -102,11 +101,11 @@ struct rmi_function_driver {
 	struct device_driver driver;
 
 	u8 func;
-	int (*probe)(struct rmi_function *fc);
-	int (*remove)(struct rmi_function *fc);
-	int (*config)(struct rmi_function *fc);
-	int (*reset)(struct rmi_function *fc);
-	int (*attention)(struct rmi_function *fc, unsigned long *irq_bits);
+	int (*probe)(struct rmi_function *fn);
+	int (*remove)(struct rmi_function *fn);
+	int (*config)(struct rmi_function *fn);
+	int (*reset)(struct rmi_function *fn);
+	int (*attention)(struct rmi_function *fn, unsigned long *irq_bits);
 };
 
 #define to_rmi_function_driver(d) \
@@ -239,10 +238,6 @@ struct rmi_device {
 	int    interrupt_restore_block_flag;
 	bool   supports_device_wakeup;
 
-
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	struct early_suspend early_suspend_handler;
-#endif
 };
 
 #define to_rmi_device(d) container_of(d, struct rmi_device, dev)

@@ -25,7 +25,7 @@ struct f11_sensor_ctl_data {
 struct f11_ctl_data {
 	struct rmi_function *f11_dev;
 	struct rmi_control_handler_data handler_data;
-	struct f11_sensor_ctl_data sensor_data[F11_MAX_NUM_OF_SENSORS];
+	struct f11_sensor_ctl_data sensor_data;
 };
 
 #ifdef CONFIG_RMI4_DEBUG
@@ -248,8 +248,8 @@ static ssize_t offset_read(struct file *filp, char __user *buffer, size_t size,
 	data->done = 1;
 
 	retval = snprintf(local_buf, size, "%u %u\n",
-			data->sensor->axis_align.offset_X,
-			data->sensor->axis_align.offset_Y);
+			data->sensor->axis_align.offset_x,
+			data->sensor->axis_align.offset_y);
 
 	if (retval <= 0 || copy_to_user(buffer, local_buf, retval))
 		retval = -EFAULT;
@@ -281,8 +281,8 @@ static ssize_t offset_write(struct file *filp, const char __user *buffer,
 	if (retval != 2)
 		return -EINVAL;
 
-	data->sensor->axis_align.offset_X = new_X;
-	data->sensor->axis_align.offset_Y = new_Y;
+	data->sensor->axis_align.offset_x = new_X;
+	data->sensor->axis_align.offset_y = new_Y;
 
 	return size;
 }
@@ -311,10 +311,10 @@ static ssize_t clip_read(struct file *filp, char __user *buffer, size_t size,
 	data->done = 1;
 
 	retval = snprintf(local_buf, size, "%u %u %u %u\n",
-			data->sensor->axis_align.clip_X_low,
-			data->sensor->axis_align.clip_X_high,
-			data->sensor->axis_align.clip_Y_low,
-			data->sensor->axis_align.clip_Y_high);
+			data->sensor->axis_align.clip_x_low,
+			data->sensor->axis_align.clip_x_high,
+			data->sensor->axis_align.clip_y_low,
+			data->sensor->axis_align.clip_y_high);
 
 	if (retval <= 0 || copy_to_user(buffer, local_buf, retval))
 		retval = -EFAULT;
@@ -350,10 +350,10 @@ static ssize_t clip_write(struct file *filp, const char __user *buffer,
 	if (new_X_low >= new_X_high || new_Y_low >= new_Y_high)
 		return -EINVAL;
 
-	data->sensor->axis_align.clip_X_low = new_X_low;
-	data->sensor->axis_align.clip_X_high = new_X_high;
-	data->sensor->axis_align.clip_Y_low = new_Y_low;
-	data->sensor->axis_align.clip_Y_high = new_Y_high;
+	data->sensor->axis_align.clip_x_low = new_X_low;
+	data->sensor->axis_align.clip_x_high = new_X_high;
+	data->sensor->axis_align.clip_y_low = new_Y_low;
+	data->sensor->axis_align.clip_y_high = new_Y_high;
 
 	return size;
 }
@@ -549,7 +549,7 @@ static ssize_t query_write(struct file *filp, const char __user *buffer,
 	struct f11_debugfs_data *data = filp->private_data;
 	struct f11_data *f11 = data->fn->data;
 	struct device *dev = &data->fn->dev;
-	struct f11_2d_sensor_queries *props = &f11->sensors[0].sens_query;
+	struct f11_2d_sensor_queries *props = &f11->sensor.sens_query;
 
 	retval = copy_from_user(buf, buffer, size);
 	if (retval)
@@ -561,7 +561,6 @@ static ssize_t query_write(struct file *filp, const char __user *buffer,
 	dev_dbg(&data->fn->dev, "QUERY %d\n", query);
 	switch (query) {
 	case 0:
-		dev_dbg(dev, "Nr sensors: %d\n", f11->nr_sensors);
 		dev_dbg(dev, "has_query9? %d\n", f11->has_query9);
 		dev_dbg(dev, "has_query11? %d\n", f11->has_query11);
 		dev_dbg(dev, "has_query12? %d\n", f11->has_query12);
@@ -847,7 +846,6 @@ static struct rmi_control_handler_data *f11_ctl_attach(struct device *dev,
 	struct rmi_function *fn = to_rmi_function(dev);
 	struct f11_data *f11 = fn->data;
 	struct f11_ctl_data *ctl_data;
-	int i;
 
 	dev_dbg(dev, "%s called.\n", __func__);
 
@@ -856,11 +854,8 @@ static struct rmi_control_handler_data *f11_ctl_attach(struct device *dev,
 		return NULL;
 	ctl_data->f11_dev = fn;
 
-	/* Increase with one since number of sensors is zero based */
-	for (i = 0; i < (f11->nr_sensors + 1); i++) {
-		ctl_data->sensor_data[i].sensor = &f11->sensors[i];
-		rmi_f11_setup_sensor_debugfs(&ctl_data->sensor_data[i]);
-	}
+	ctl_data->sensor_data.sensor = &f11->sensor;
+	rmi_f11_setup_sensor_debugfs(&ctl_data->sensor_data);
 
 	if (sysfs_create_group(&fn->dev.kobj, &fn11_attrs) < 0)
 		dev_warn(&fn->dev, "Failed to create query sysfs files.");

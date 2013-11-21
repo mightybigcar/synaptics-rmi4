@@ -101,8 +101,7 @@ int rmi_f01_read_properties(struct rmi_device *rmi_dev, u16 query_base_addr,
 			basic_query[1] & RMI_F01_QRY1_HAS_ADJ_DOZE_HOFF;
 	props->has_query42 = basic_query[1] & RMI_F01_QRY1_HAS_PROPS_2;
 
-	snprintf(props->dom, sizeof(props->dom),
-		"20%02d/%02d/%02d",
+	snprintf(props->dom, sizeof(props->dom), "20%02d/%02d/%02d",
 		basic_query[5] & RMI_F01_QRY5_YEAR_MASK,
 		basic_query[6] & RMI_F01_QRY6_MONTH_MASK,
 		basic_query[7] & RMI_F01_QRY7_DAY_MASK);
@@ -646,7 +645,7 @@ static int rmi_f01_attention(struct rmi_function *fn,
 
 struct rmi_function_driver rmi_f01_driver = {
 	.driver = {
-		.name = "rmi_f01",
+		.name	= "rmi_f01",
 		.pm	= &rmi_f01_pm_ops,
 		/*
 		 * Do not allow user unbinding of F01 as it is a critical

@@ -247,7 +247,7 @@ static int driver_ctl_cleanup(struct rmi_control_handler_data *hdata)
 
 	teardown_debugfs(ctl_data);
 
-	if (driver_data->pdt_props.has_bsr)
+	if (driver_data->pdt_props & RMI_PDT_PROPS_HAS_BSR)
 		device_remove_file(&rmi_dev->dev, &bsr_attribute);
 
 	devm_kfree(dev, ctl_data);
@@ -273,7 +273,7 @@ static struct rmi_control_handler_data *driver_ctl_attach(struct device *dev,
 	ctl_data->rmi_dev = rmi_dev;
 
 	dev_dbg(dev, "Checking BSR.\n");
-	if (driver_data && driver_data->pdt_props.has_bsr) {
+	if (driver_data && driver_data->pdt_props & RMI_PDT_PROPS_HAS_BSR) {
 		retval = device_create_file(dev, &bsr_attribute);
 		if (retval < 0)
 			dev_warn(dev, "Failed to create sysfs file bsr.\n");
