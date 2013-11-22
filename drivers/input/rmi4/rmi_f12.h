@@ -117,6 +117,7 @@ struct rmi_f12_object_data {
 
 
 #define F12_FINGER_DATA_REG 1
+#define F12_FINGER_DATA_REG5 (1<<4)
 #define F12_SENSOR_TUNING_REG 8
 #define F12_COORD_MAX_SP 0
 
@@ -157,6 +158,7 @@ struct f12_data {
 	u8 suppress_highw;
 	u8 x_mm;
 	u8 y_mm;
+	bool has_ACM25;
 };
 
 #endif

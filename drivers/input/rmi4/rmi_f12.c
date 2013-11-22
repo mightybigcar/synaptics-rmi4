@@ -298,7 +298,9 @@ static int get_tool_type(struct rmi_f12_object_data *object)
 
 static void report_one_object(struct f12_data *f12, struct rmi_f12_object_data *object, int slot)
 {
-       input_mt_slot(f12->input, slot);
+       if (object->type == F12_OBJECT_PALM && f12->has_ACM25) return;
+
+	input_mt_slot(f12->input, slot);
        input_mt_report_slot_state(f12->input, get_tool_type(object), object->type);
 
        if (object->type) {
@@ -321,7 +323,7 @@ static void report_one_object(struct f12_data *f12, struct rmi_f12_object_data *
                        max(f12->y_max - y, 0));
 #if 1
                pr_debug(
-                       "finger[%d]:%d - x:%d y:%d z:%d wx:%d wy:%d\n",
+                       "aaa finger[%d]:%d - x:%d y:%d z:%d wx:%d wy:%d\n",
                        slot, object->type, le16_to_cpu(object->pos_x),
                        le16_to_cpu(object->pos_y), object->z,
                        object->wx, object->wy);
@@ -451,7 +453,19 @@ static int rmi_f12_probe(struct rmi_function *fn)
 	}
 	f12->max_objects = rmi_register_subpackets(&f12->desc.data, F12_FINGER_DATA_REG);
 	f12->object_address = fn->fd.data_base_addr + rmi_register_offset(&f12->desc.data, F12_FINGER_DATA_REG);
-
+	f12->has_ACM25 = false;
+        if (rmi_has_register(&f12->desc.data, F12_FINGER_DATA_REG5)) {
+		f12->has_ACM25 = true;
+	}
+#if 1
+	if (f12->has_ACM25) {
+		pr_debug("acm25 is on\n");
+	}
+	else {
+		pr_debug("acm25 is off\n");
+	}
+#endif
+		
 	read_sensor_tuning(fn);
 
 	f12->sensor_type = pdata->f12_sensor_data->sensor_type;
