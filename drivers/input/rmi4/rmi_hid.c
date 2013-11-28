@@ -47,43 +47,17 @@ enum rmi_hid_mode_type {
 	RMI_HID_MODE_NO_PACKED_ATTN_REPORTS	= 2,
 };
 
-struct rmi_hid_read_output_report {
-	u8  deprecatedReadCount;
-	u16 addr;
-	u16 readCount;
-} __attribute__((__packed__));
-
-struct rmi_hid_read_input_report {
-	u8 readCount;
-	u8 data[0];
-} __attribute__((__packed__));
-
-struct rmi_hid_write_output_report {
-	u8  writeCount;
-	u16 addr;
-	u8  data[0];
-} __attribute__((__packed__));
-
-struct rmi_hid_feature_report {
-	u8  mode;
-} __attribute__((__packed__));
-
-struct rmi_hid_attn_report {
-	u8  interruptSources;
-	u8  data[0];
-} __attribute__((__packed__));
-
-struct rmi_hid_report {
-	u8  hidReportID;
-	union {
-		struct rmi_hid_read_output_report	read_out_report;
-		struct rmi_hid_read_input_report 	read_in_report;
-		struct rmi_hid_write_output_report	write_out_report;
-		struct rmi_hid_feature_report		feature_report;
-		struct rmi_hid_attn_report		attn_report;
-		u8   data[0];
-	} __attribute__((__packed__));
-} __attribute__((__packed__));
+#define RMI_HID_REPORT_ID		0
+#define RMI_HID_READ_INPUT_COUNT	1
+#define RMI_HID_READ_INPUT_DATA		2
+#define RMI_HID_READ_OUTPUT_ADDR	2
+#define RMI_HID_READ_OUTPUT_COUNT	4
+#define RMI_HID_WRITE_OUTPUT_COUNT	1
+#define RMI_HID_WRITE_OUTPUT_ADDR	2
+#define RMI_HID_WRITE_OUTPUT_DATA	4
+#define RMI_HID_FEATURE_MODE		1
+#define RMI_HID_ATTN_INTERUPT_SOURCES	1
+#define RMI_HID_ATTN_DATA		2
 
 static u16 tp_button_codes[] = {BTN_LEFT, BTN_RIGHT, BTN_MIDDLE};
 
@@ -164,7 +138,7 @@ struct rmi_hid_data {
 
 	spinlock_t input_queue_producer_lock;
 	spinlock_t input_queue_consumer_lock;
-	struct rmi_hid_report * input_queue;
+	u8 * input_queue;
 	int input_queue_head;
 	int input_queue_tail;
 	
@@ -306,7 +280,7 @@ static void teardown_debugfs(struct rmi_hid_data *data)
 static char *transport_proto_name = "hid";
 
 static int rmi_hid_write_report(struct hid_device *hdev,
-				struct rmi_hid_report * report, int len);
+				u8 * report, int len);
 /*
  * rmi_set_page - Set RMI page
  * @xport: The pointer to the rmi_transport_device struct
@@ -326,8 +300,6 @@ static int rmi_set_page(struct rmi_transport_device *xport, u8 page)
         struct hid_device *hdev = to_hid_device(xport->dev);
         struct rmi_hid_data *data = xport->data;
         int retval;
-	struct rmi_hid_report * writeReport =
-		(struct rmi_hid_report *)data->writeReport;
 
         if (COMMS_DEBUG(data))
                 dev_dbg(&hdev->dev, "writes output report: %*ph\n",
@@ -336,12 +308,12 @@ static int rmi_set_page(struct rmi_transport_device *xport, u8 page)
         xport->info.tx_count++;
         xport->info.tx_bytes += data->output_report_size;
 
-	writeReport->hidReportID = RMI_WRITE_REPORT_ID;
-	writeReport->write_out_report.writeCount = 1;
-	writeReport->write_out_report.addr = 0xFF;
-	writeReport->write_out_report.data[0] = page;
+	data->writeReport[RMI_HID_REPORT_ID] = RMI_WRITE_REPORT_ID;
+	data->writeReport[RMI_HID_WRITE_OUTPUT_COUNT] = 1;
+	data->writeReport[RMI_HID_WRITE_OUTPUT_ADDR] = 0xFF;
+	data->writeReport[RMI_HID_WRITE_OUTPUT_DATA] = page;
 
-        retval = rmi_hid_write_report(hdev, writeReport,
+        retval = rmi_hid_write_report(hdev, data->writeReport,
 			data->output_report_size);
         if (retval != data->output_report_size) {
                 xport->info.tx_errs++;
@@ -399,8 +371,7 @@ static int rmi_hid_set_mode(struct hid_device *hdev, u8 mode)
 	return 0;
 }
 
-static int rmi_hid_write_report(struct hid_device *hdev,
-				struct rmi_hid_report * report, int len)
+static int rmi_hid_write_report(struct hid_device *hdev, u8 * report, int len)
 {
 	int ret;
 
@@ -419,7 +390,6 @@ static int rmi_hid_write_block(struct rmi_transport_device *xport, u16 addr,
 {
         struct hid_device *hdev = to_hid_device(xport->dev);
 	struct rmi_hid_data *data = xport->data;
-	struct rmi_hid_report * writeReport = (struct rmi_hid_report *)data->writeReport;
 	int ret;
 
 	mutex_lock(&data->page_mutex);
@@ -440,12 +410,13 @@ static int rmi_hid_write_block(struct rmi_transport_device *xport, u16 addr,
 	xport->info.tx_count++;
 	xport->info.tx_bytes += len;
 
-	writeReport->hidReportID = RMI_WRITE_REPORT_ID;
-	writeReport->write_out_report.writeCount = len;
-	writeReport->write_out_report.addr = addr;
-	memcpy(&writeReport->write_out_report.data, buf, len);
+	data->writeReport[RMI_HID_REPORT_ID] = RMI_WRITE_REPORT_ID;
+	data->writeReport[RMI_HID_WRITE_OUTPUT_COUNT] = len;
+	data->writeReport[RMI_HID_WRITE_OUTPUT_ADDR] = addr & 0xFF;
+	data->writeReport[RMI_HID_WRITE_OUTPUT_ADDR + 1] = (addr >> 8) & 0xFF;
+	memcpy(&data->writeReport[RMI_HID_WRITE_OUTPUT_DATA], buf, len);
 
-	ret = rmi_hid_write_report(hdev, writeReport,
+	ret = rmi_hid_write_report(hdev, data->writeReport,
 					data->output_report_size);
 	if (ret != data->output_report_size) {
 		dev_err(&hdev->dev, "failed to send output report (%d)\n", ret);
@@ -462,12 +433,11 @@ static int rmi_hid_read_block(struct rmi_transport_device *xport, u16 addr,
 {
         struct hid_device *hdev = to_hid_device(xport->dev);
 	struct rmi_hid_data *data = xport->data;
-	struct rmi_hid_report * writeReport = (struct rmi_hid_report *)data->writeReport;
-	struct rmi_hid_report * readReport = (struct rmi_hid_report *)data->readReport;
 	int ret;
 	int bytes_read;
 	int bytes_needed;
 	int retries;
+	int read_input_count;
 
 	mutex_lock(&data->page_mutex);
 
@@ -478,13 +448,15 @@ static int rmi_hid_read_block(struct rmi_transport_device *xport, u16 addr,
 	}
 
 	for (retries = 5; retries > 0; retries--) {
-		writeReport->hidReportID = RMI_READ_ADDR_REPORT_ID;
-		writeReport->read_out_report.deprecatedReadCount = 0;
-		writeReport->read_out_report.addr = addr;
-		writeReport->read_out_report.readCount = len;
+		data->writeReport[RMI_HID_REPORT_ID] = RMI_READ_ADDR_REPORT_ID;
+		data->writeReport[1] = 0; /* old 1 byte read count */
+		data->writeReport[RMI_HID_READ_OUTPUT_ADDR] = addr & 0xFF;
+		data->writeReport[RMI_HID_READ_OUTPUT_ADDR + 1] = (addr >> 8) & 0xFF;
+		data->writeReport[RMI_HID_READ_OUTPUT_COUNT] = len  & 0xFF;
+		data->writeReport[RMI_HID_READ_OUTPUT_COUNT + 1] = (len >> 8) & 0xFF;
 
 		if (COMMS_DEBUG(data)) {
-			ret = copy_to_debug_buf(&hdev->dev, data, (u8 *) writeReport, len);
+			ret = copy_to_debug_buf(&hdev->dev, data, data->writeReport, len);
 			if (!ret)
 				dev_dbg(&hdev->dev, "wrote %d bytes at %#06x:%s\n",
 					len, addr, data->debug_buf);
@@ -492,7 +464,7 @@ static int rmi_hid_read_block(struct rmi_transport_device *xport, u16 addr,
 
 		set_bit(RMI_HID_READ_REQUEST_PENDING, &data->flags);
 
-		ret = rmi_hid_write_report(hdev, writeReport,
+		ret = rmi_hid_write_report(hdev, data->writeReport,
 						data->output_report_size);
 		if (ret != data->output_report_size) {
 			clear_bit(RMI_HID_READ_REQUEST_PENDING, &data->flags);
@@ -509,32 +481,37 @@ static int rmi_hid_read_block(struct rmi_transport_device *xport, u16 addr,
 					msecs_to_jiffies(1000)))
 			{
 					dev_info(&hdev->dev, "%s: timeout elapsed\n", __func__);
-						ret = -ENODATA;
-						break;
+					ret = -ENODATA;
+					break;
 			} else {
-				if (readReport->hidReportID != RMI_READ_DATA_REPORT_ID) {
+				if (data->readReport[RMI_HID_REPORT_ID]
+						!= RMI_READ_DATA_REPORT_ID)
+				{
 					ret = -ENODATA;
 					dev_err(&hdev->dev,
 						"%s: Expected data report, but got"
 						" report id %d instead", __func__,
-						readReport->hidReportID);
+						data->readReport[RMI_HID_REPORT_ID]);
 					goto exit;
 				}
 
-				memcpy(buf + bytes_read, readReport->read_in_report.data,
-					readReport->read_in_report.readCount < bytes_needed 
-					? readReport->read_in_report.readCount : bytes_needed);
+				read_input_count = data->readReport[RMI_HID_READ_INPUT_COUNT];
+				memcpy(buf + bytes_read,
+					&data->readReport[RMI_HID_READ_INPUT_DATA],
+					read_input_count < bytes_needed 
+					? read_input_count : bytes_needed);
+
 				if (COMMS_DEBUG(data)) {
 					ret = copy_to_debug_buf(&hdev->dev, data,
 							(u8 *) buf + bytes_read,
-							readReport->read_in_report.readCount);
+							read_input_count);
 					if (!ret)
 						dev_dbg(&hdev->dev, "read %d bytes at %#06x:%s\n",
-							readReport->read_in_report.readCount, addr,
+							read_input_count, addr,
 							data->debug_buf);
 				}
-				bytes_read += readReport->read_in_report.readCount;
-				bytes_needed -= readReport->read_in_report.readCount;
+				bytes_read += read_input_count;
+				bytes_needed -= read_input_count;
 				clear_bit(RMI_HID_READ_DATA_PENDING, &data->flags);
 			}
 		}
@@ -543,9 +520,11 @@ static int rmi_hid_read_block(struct rmi_transport_device *xport, u16 addr,
 			break;
 	}
 
-	xport->info.rx_count++;
-	xport->info.rx_bytes += len;
-	ret = len;
+	if (bytes_read == len) {
+		xport->info.rx_count++;
+		xport->info.rx_bytes += len;
+		ret = len;
+	}
 
 exit:
 	clear_bit(RMI_HID_READ_REQUEST_PENDING, &data->flags);
@@ -558,9 +537,7 @@ static void rmi_hid_attn_report_work(struct work_struct *work)
 	struct rmi_hid_data * hdata = container_of(work, struct rmi_hid_data,
 						attn_report_work);
 	struct rmi_transport_device * xport = hdata->xport;
-	struct rmi_hid_report * rmi_report =
-		(struct rmi_hid_report *)hdata->attnReport;
-	struct rmi_hid_report * queue_report;
+	u8 * queue_report;
 	struct rmi_driver_data * drv_data;
 	unsigned long lock_flags;
 	int head;
@@ -572,23 +549,22 @@ static void rmi_hid_attn_report_work(struct work_struct *work)
 	tail = hdata->input_queue_tail;
 
 	while (CIRC_CNT(head, tail, RMI_HID_INPUT_REPORT_QUEUE_LEN)) {
-		memset(rmi_report, 0, hdata->input_report_size);
-
-		queue_report = (struct rmi_hid_report *)(((u8*)hdata->input_queue)
-				+ hdata->input_report_size * tail);
-		memcpy(rmi_report, queue_report, hdata->input_report_size);
+		queue_report = hdata->input_queue
+				+ hdata->input_report_size * tail;
+		memcpy(hdata->attnReport, queue_report, hdata->input_report_size);
 
 		smp_mb();
 		hdata->input_queue_tail = (tail + 1) & (RMI_HID_INPUT_REPORT_QUEUE_LEN - 1);
 
 		dev_dbg(&xport->rmi_dev->dev, "attn = %*ph\n", hdata->input_report_size,
-			rmi_report);
+			hdata->attnReport);
 
 		if (test_bit(RMI_HID_STARTED, &hdata->flags)) {
 			/* process it! */
 			drv_data = dev_get_drvdata(&xport->rmi_dev->dev);
-			*(drv_data->irq_status) = rmi_report->attn_report.interruptSources;
-			xport->attn_data = rmi_report->attn_report.data;
+			*(drv_data->irq_status) =
+				hdata->attnReport[RMI_HID_ATTN_INTERUPT_SOURCES];
+			xport->attn_data = &hdata->attnReport[RMI_HID_ATTN_DATA];
 			xport->attn_size = hdata->input_report_size -
 						1 /* report id */ -
 						1 /* interrupt sources */;
@@ -606,16 +582,15 @@ static int rmi_hid_raw_event(struct hid_device *hdev,
 {
 	struct rmi_transport_device *xport = hid_get_drvdata(hdev);
 	struct rmi_hid_data * hdata = xport->data;
-	struct rmi_hid_report * queue_report;
-	struct rmi_hid_report * rmi_report = (struct rmi_hid_report *)data;
+	u8 * queue_report;
 	int sched_work = 0;
 	unsigned long lock_flags;
 	int head;
 	int tail;
 
-	if (rmi_report->hidReportID == RMI_READ_DATA_REPORT_ID) {
+	if (data[RMI_HID_REPORT_ID] == RMI_READ_DATA_REPORT_ID) {
 		if (test_bit(RMI_HID_READ_REQUEST_PENDING, &hdata->flags)) {
-			memcpy(hdata->readReport, rmi_report,
+			memcpy(hdata->readReport, data,
 				size < hdata->input_report_size ? size
 				: hdata->input_report_size);
 			set_bit(RMI_HID_READ_DATA_PENDING, &hdata->flags);
@@ -623,7 +598,7 @@ static int rmi_hid_raw_event(struct hid_device *hdev,
 		} else
 			dev_info(&hdev->dev, "NO READ REQUEST PENDING\n");
 
-	} else if (rmi_report->hidReportID == RMI_ATTN_REPORT_ID
+	} else if (data[RMI_HID_REPORT_ID] == RMI_ATTN_REPORT_ID
 			&& test_bit(RMI_HID_STARTED, &hdata->flags))
 	{
 		spin_lock_irqsave(&hdata->input_queue_producer_lock, lock_flags);
@@ -635,8 +610,8 @@ static int rmi_hid_raw_event(struct hid_device *hdev,
 		if (!CIRC_CNT(head, tail, RMI_HID_INPUT_REPORT_QUEUE_LEN))
 			sched_work = 1;
 
-		queue_report = (struct rmi_hid_report *)(((u8*)hdata->input_queue)
-				+ hdata->input_report_size * head);
+		queue_report = hdata->input_queue
+				+ hdata->input_report_size * head;
 		memcpy(queue_report, data, size < hdata->input_report_size ? size
 			: hdata->input_report_size);
 
