@@ -277,6 +277,7 @@ static void rmi_f11_finger_handler(struct f11_data *f11,
 	u8 i;
 	u8 report_fingers = 1;
 	int ret_val;
+	struct rmi_transport_device *xport = sensor->fn->rmi_dev->xport;
 
 	if (sensor->suppress)
 		return;
@@ -299,7 +300,7 @@ static void rmi_f11_finger_handler(struct f11_data *f11,
 
 		}
 
-		if (sensor->sensor_type != rmi_sensor_touchpad && sensor->data.rel_pos)
+		if (xport->info.proto_type != RMI_PROTOCOL_HID && sensor->data.rel_pos)
 			rmi_f11_rel_pos_report(sensor, i);
 	}
 	
@@ -324,6 +325,7 @@ static int f11_2d_construct_data(struct f11_2d_sensor *sensor)
 {
 	struct f11_2d_sensor_queries *query = &sensor->sens_query;
 	struct f11_2d_data *data = &sensor->data;
+	struct rmi_transport_device *xport = sensor->fn->rmi_dev->xport;
 	int i;
 
 	sensor->nbr_fingers = (query->nr_fingers == 5 ? 10 :
@@ -336,7 +338,11 @@ static int f11_2d_construct_data(struct f11_2d_sensor *sensor)
 		sensor->abs_size = sensor->pkt_size;
 	}
 
-	if (query->has_rel)
+	/*
+	 * The HID attention report does not contain relative data even if
+	 * the device supports reporting relative data.
+	 */
+	if (xport->info.proto_type != RMI_PROTOCOL_HID && query->has_rel)
 		sensor->pkt_size +=  (sensor->nbr_fingers * 2);
 
 	/* Check if F11_2D_Query7 is non-zero */
@@ -374,7 +380,7 @@ static int f11_2d_construct_data(struct f11_2d_sensor *sensor)
 			* sizeof(struct f11_abs_pos_data), GFP_KERNEL);
 	}
 
-	if (query->has_rel) {
+	if (xport->info.proto_type != RMI_PROTOCOL_HID && query->has_rel) {
 		data->rel_pos = &sensor->data_pkt[i];
 		i += (sensor->nbr_fingers * RMI_F11_REL_BYTES);
 	}
@@ -457,6 +463,7 @@ static int rmi_f11_get_query_parameters(struct rmi_device *rmi_dev,
 	int query_size;
 	int rc;
 	u8 query_buf[4];
+	struct rmi_transport_device * xport = rmi_dev->xport;
 
 	rc = rmi_read_block(rmi_dev, query_base_addr, query_buf, 4);
 	if (rc < 0)
@@ -501,7 +508,7 @@ static int rmi_f11_get_query_parameters(struct rmi_device *rmi_dev,
 		query_size++;
 	}
 
-	if (sensor_query->has_rel) {
+	if (xport->info.proto_type != RMI_PROTOCOL_HID && sensor_query->has_rel) {
 		rc = rmi_read(rmi_dev, query_base_addr + query_size,
 					&sensor_query->f11_2d_query6);
 		if (rc < 0)
@@ -985,7 +992,9 @@ static int rmi_f11_register_devices(struct rmi_function *fn)
 
 		f11_set_abs_params(fn, i);
 
-		if (sensor->sensor_type != rmi_sensor_touchpad && sensor->sens_query.has_rel) {
+		if (rmi_dev->xport->info.proto_type != RMI_PROTOCOL_HID
+			&& sensor->sens_query.has_rel)
+		{
 			set_bit(EV_REL, input_dev->evbit);
 			set_bit(REL_X, input_dev->relbit);
 			set_bit(REL_Y, input_dev->relbit);
@@ -1003,7 +1012,10 @@ static int rmi_f11_register_devices(struct rmi_function *fn)
 		if (IS_ENABLED(CONFIG_RMI4_VIRTUAL_BUTTON))
 			register_virtual_buttons(fn, sensor);
 
-		if (!pdata->unified_input_device && sensor->sens_query.has_rel) {
+		if (!pdata->unified_input_device
+			&& rmi_dev->xport->info.proto_type != RMI_PROTOCOL_HID
+			&& sensor->sens_query.has_rel)
+		{
 			/*create input device for mouse events  */
 			input_dev_mouse = input_allocate_device();
 			if (!input_dev_mouse) {
