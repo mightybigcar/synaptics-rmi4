@@ -740,14 +740,14 @@ static int rmi_hid_probe(struct hid_device *hdev, const struct hid_device_id *id
 
 	mutex_init(&data->page_mutex);
 
-	dev_dbg(&hdev->dev, "Opening low level driver\n");
-	hdev->ll_driver->open(hdev);
-
 	ret = hid_hw_start(hdev, connect_mask);
 	if (ret) {
 		hid_err(hdev, "hw start failed\n");
 		goto err;
 	}
+
+	dev_dbg(&hdev->dev, "Opening low level driver\n");
+	hdev->ll_driver->open(hdev);
 
 	/* Allow incoming hid reports */
 	hid_device_io_start(hdev);
