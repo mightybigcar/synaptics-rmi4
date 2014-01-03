@@ -34,6 +34,11 @@ Files in the tarball are:
       drivers/hid/hid-core.c
           Example of entries in the hid_have_special_driver[] for Synaptics touch devices so
 	  that the RMI4 driver will be loaded for our devices.
+      drivers/platform/x86/chromeos_laptop.c
+          Reference chromeos_laptop.c which contains entries for using a Synaptics TouchPad in
+	  a Chromebook Pixel.
+      chromeos/config/x86_64/chromiumos-x86_64.flavour.config
+          Reference kernel config file with extries the RMI4 driver's kernel config options.
       arch/arm/mach-omap2/board-omap4panda.c
           A testing board file, for reference.
       arch/arm/configs/panda_defconfig
