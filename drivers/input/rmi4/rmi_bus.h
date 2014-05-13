@@ -58,6 +58,8 @@ struct rmi_function {
 
 #define to_rmi_function(d)	container_of(d, struct rmi_function, dev)
 
+extern struct device_type rmi_function_type;
+
 bool rmi_is_function_device(struct device *dev);
 
 int __must_check rmi_register_function(struct rmi_function *);
@@ -225,6 +227,8 @@ struct rmi_device {
 
 #define to_rmi_device(d) container_of(d, struct rmi_device, dev)
 #define to_rmi_platform_data(d) ((d)->xport->dev->platform_data)
+
+extern struct device_type rmi_device_type;
 
 bool rmi_is_physical_device(struct device *dev);
 

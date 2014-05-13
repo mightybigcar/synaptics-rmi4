@@ -249,4 +249,25 @@ struct f01_device_control {
 	u8 doze_holdoff;
 };
 
+struct f01_data {
+	struct f01_basic_properties properties;
+
+	struct f01_device_control device_control;
+	struct mutex control_mutex;
+
+	u8 device_status;
+
+	u16 interrupt_enable_addr;
+	u16 doze_interval_addr;
+	u16 wakeup_threshold_addr;
+	u16 doze_holdoff_addr;
+	int irq_count;
+	int num_of_irq_regs;
+
+	#ifdef CONFIG_PM_SLEEP
+	bool suspended;
+	bool old_nosleep;
+	#endif
+};
+
 #endif

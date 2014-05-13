@@ -304,10 +304,10 @@ static int rmi_f01_setup_debugfs(struct f01_ctl_data *ctl_data)
 	if (!fn->debugfs_root)
 		return -ENODEV;
 
-	entry = debugfs_create_file("interrupt_enable", RMI_RW_ATTR,
+	entry = debugfs_create_file("interrupt_enable", (S_IRUGO | S_IWUGO),
 			fn->debugfs_root, fn, &interrupt_enable_fops);
 
-	entry = debugfs_create_file("query", RMI_WO_ATTR,
+	entry = debugfs_create_file("query", S_IWUGO,
 			fn->debugfs_root, fn, &query_fops);
 	if (!entry)
 		dev_warn(&fn->dev,
@@ -383,24 +383,6 @@ static ssize_t rmi_fn_01_sensor_id_show(struct device *dev,
 
 	return snprintf(buf, PAGE_SIZE, "%d\n",
 			data->properties.sensor_id);
-}
-
-static ssize_t rmi_fn_01_serialization_show(struct device *dev,
-				       struct device_attribute *attr,
-				       char *buf)
-{
-	struct rmi_function *fn = to_rmi_function(dev);
-	struct f01_data *data = fn->data;
-	int i, n, count = 0;
-	char *local_buf = buf;
-
-	for (i = 0; i < F01_SERIALIZATION_SIZE; i++) {
-		n = snprintf(local_buf, PAGE_SIZE - count, "%02X ",
-			     data->serialization[i]);
-		count += n;
-		local_buf += n;
-	}
-	return count;
 }
 
 static ssize_t rmi_fn_01_reset_store(struct device *dev,
@@ -836,55 +818,55 @@ static ssize_t rmi_fn_01_statuscode_show(struct device *dev,
 }
 
 static struct device_attribute dev_attr_doze_interval =
-		__ATTR(doze_interval, RMI_RW_ATTR,
+		__ATTR(doze_interval, (S_IRUGO | S_IWUGO),
 			rmi_fn_01_doze_interval_show,
 				rmi_fn_01_doze_interval_store);
 static struct device_attribute dev_attr_wakeup_threshold =
-		__ATTR(wakeup_threshold, RMI_RW_ATTR,
+		__ATTR(wakeup_threshold, (S_IRUGO | S_IWUGO),
 			rmi_fn_01_wakeup_threshold_show,
 			rmi_fn_01_wakeup_threshold_store);
 static struct device_attribute dev_attr_doze_holdoff =
-		__ATTR(doze_holdoff, RMI_RW_ATTR,
+		__ATTR(doze_holdoff, (S_IRUGO | S_IWUGO),
 			rmi_fn_01_doze_holdoff_show,
 			rmi_fn_01_doze_holdoff_store);
 
 static struct device_attribute dev_attr_productinfo =
-	__ATTR(productinfo, RMI_RO_ATTR,
+	__ATTR(productinfo, S_IRUGO,
 	       rmi_fn_01_productinfo_show, NULL);
 static struct device_attribute dev_attr_productid =
-	__ATTR(productid, RMI_RO_ATTR,
+	__ATTR(productid, S_IRUGO,
 	       rmi_fn_01_productid_show, NULL);
 static struct device_attribute dev_attr_manufacturer =
-	__ATTR(manufacturer, RMI_RO_ATTR,
+	__ATTR(manufacturer, S_IRUGO,
 	       rmi_fn_01_manufacturer_show, NULL);
 static struct device_attribute dev_attr_slave_rows =
-	__ATTR(slave_rows, RMI_RO_ATTR,
+	__ATTR(slave_rows, S_IRUGO,
 		rmi_fn_01_slave_rows_show, NULL);
 static struct device_attribute dev_attr_slave_columns =
-	__ATTR(slave_columns, RMI_RO_ATTR,
+	__ATTR(slave_columns, S_IRUGO,
 	       rmi_fn_01_slave_columns_show, NULL);
 static struct device_attribute dev_attr_sensor_id =
-	__ATTR(sensor_id, RMI_RO_ATTR,
+	__ATTR(sensor_id, S_IRUGO,
 		rmi_fn_01_sensor_id_show, NULL);
 
 /* control register access */
 static struct device_attribute dev_attr_sleepmode =
-	__ATTR(sleepmode, RMI_RW_ATTR,
+	__ATTR(sleepmode, (S_IRUGO | S_IWUGO),
 	       rmi_fn_01_sleepmode_show, rmi_fn_01_sleepmode_store);
 static struct device_attribute dev_attr_nosleep =
-	__ATTR(nosleep, RMI_RW_ATTR,
+	__ATTR(nosleep, (S_IRUGO | S_IWUGO),
 	       rmi_fn_01_nosleep_show, rmi_fn_01_nosleep_store);
 static struct device_attribute dev_attr_chargerinput =
-	__ATTR(chargerinput, RMI_RW_ATTR,
+	__ATTR(chargerinput, (S_IRUGO | S_IWUGO),
 	       rmi_fn_01_chargerinput_show, rmi_fn_01_chargerinput_store);
 static struct device_attribute dev_attr_reportrate =
-	__ATTR(reportrate, RMI_RW_ATTR,
+	__ATTR(reportrate, (S_IRUGO | S_IWUGO),
 	       rmi_fn_01_reportrate_show, rmi_fn_01_reportrate_store);
 /* We don't want arbitrary callers changing the interrupt enable mask,
  * so it's read only.
  */
 static struct device_attribute dev_attr_interrupt_enable =
-	__ATTR(interrupt_enable, RMI_RO_ATTR,
+	__ATTR(interrupt_enable, S_IRUGO,
 	       rmi_fn_01_interrupt_enable_show, NULL);
 
 /* We make configured RO, since the driver uses that to look for
@@ -892,27 +874,24 @@ static struct device_attribute dev_attr_interrupt_enable =
  * bit.
  */
 static struct device_attribute dev_attr_configured =
-	__ATTR(configured, RMI_RO_ATTR,
+	__ATTR(configured, S_IRUGO,
 	       rmi_fn_01_configured_show, NULL);
 
 /* Command register access. */
 static struct device_attribute dev_attr_reset =
-	__ATTR(reset, RMI_WO_ATTR,
+	__ATTR(reset, S_IWUGO,
 	       NULL, rmi_fn_01_reset_store);
 
 /* Status register access. */
 static struct device_attribute dev_attr_unconfigured =
-	__ATTR(unconfigured, RMI_RO_ATTR,
+	__ATTR(unconfigured, S_IRUGO,
 	       rmi_fn_01_unconfigured_show, NULL);
 static struct device_attribute dev_attr_flashprog =
-	__ATTR(flashprog, RMI_RO_ATTR,
+	__ATTR(flashprog, S_IRUGO,
 	       rmi_fn_01_flashprog_show, NULL);
 static struct device_attribute dev_attr_statuscode =
-	__ATTR(statuscode, RMI_RO_ATTR,
+	__ATTR(statuscode, S_IRUGO,
 	       rmi_fn_01_statuscode_show, NULL);
-static struct device_attribute dev_attr_serialization =
-	__ATTR(serialization, RMI_RO_ATTR,
-	       rmi_fn_01_serialization_show, NULL);
 
 static struct attribute *attrs[] = {
 	&dev_attr_productinfo.attr,
@@ -928,7 +907,6 @@ static struct attribute *attrs[] = {
 	&dev_attr_unconfigured.attr,
 	&dev_attr_flashprog.attr,
 	&dev_attr_statuscode.attr,
-	&dev_attr_serialization.attr,
 	NULL
 };
 

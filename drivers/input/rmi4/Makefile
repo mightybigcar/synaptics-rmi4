@@ -20,15 +20,15 @@ obj-$(CONFIG_RMI4_F54) += rmi_f54.o
 
 # Transport layers
 obj-$(CONFIG_RMI4_I2C) += rmi_i2c.o
-obj-$(CONFIG_RMI4_SPI) += rmi_spi.o
-obj-$(CONFIG_RMI4_SMB) += rmi_smbus.o
+# obj-$(CONFIG_RMI4_SPI) += rmi_spi.o
+# obj-$(CONFIG_RMI4_SMB) += rmi_smbus.o
 
 # Control modules (implementing sysfs and debugfs)
 
-# ifeq ("$(CONFIG_RMI4_CONTROL)", "y")
-# obj-$(CONFIG_RMI4_CORE) += rmi_control.o rmi_f01_control.o rmi_driver_control.o
-# obj-$(CONFIG_RMI4_F11) += rmi_f11_control.o
-# endif
+ifeq ("$(CONFIG_RMI4_CONTROL)", "y")
+    obj-$(CONFIG_RMI4_CORE) += rmi_control.o rmi_f01_control.o rmi_driver_control.o
+    obj-$(CONFIG_RMI4_F12) += rmi_f12_control.o
+endif
 
 # Other features
 obj-$(CONFIG_RMI4_DEV) += rmi_dev.o

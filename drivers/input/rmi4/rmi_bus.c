@@ -41,6 +41,7 @@ struct device_type rmi_device_type = {
 	.name		= "rmi_sensor",
 	.release	= rmi_release_device,
 };
+EXPORT_SYMBOL_GPL(rmi_device_type);
 
 bool rmi_is_physical_device(struct device *dev)
 {
@@ -138,7 +139,7 @@ void rmi_unregister_transport_device(struct rmi_transport_dev *xport)
 	rmi_physical_teardown_debugfs(rmi_dev);
 	device_unregister(&rmi_dev->dev);
 }
-EXPORT_SYMBOL(rmi_unregister_transport_device);
+EXPORT_SYMBOL_GPL(rmi_unregister_transport_device);
 
 
 /* Function specific stuff */
@@ -153,11 +154,13 @@ struct device_type rmi_function_type = {
 	.name		= "rmi_function",
 	.release	= rmi_release_function,
 };
+EXPORT_SYMBOL_GPL(rmi_function_type);
 
 bool rmi_is_function_device(struct device *dev)
 {
 	return dev->type == &rmi_function_type;
 }
+EXPORT_SYMBOL_GPL(rmi_is_function_device);
 
 #ifdef CONFIG_RMI4_DEBUG
 

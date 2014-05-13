@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2013 Synaptics Incorporated
+ * Copyright (c) 2011-2014 Synaptics Incorporated
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -54,6 +54,7 @@ static int sensor_debug_release(struct inode *inodep, struct file *filp)
 	kfree(filp->private_data);
 	return 0;
 }
+
 static ssize_t maxPos_read(struct file *filp, char __user *buffer, size_t size,
 		    loff_t *offset) {
 	int retval;
@@ -786,6 +787,8 @@ static int f11_ctl_cleanup(struct rmi_control_handler_data *hdata)
 {
 	struct f11_ctl_data *ctl_data;
 	struct device *dev;
+
+	dev_dbg(dev, "%s called.\n", __func__);
 
 	ctl_data = container_of(hdata, struct f11_ctl_data, handler_data);
 

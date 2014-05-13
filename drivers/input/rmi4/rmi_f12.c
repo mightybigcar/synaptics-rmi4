@@ -16,7 +16,9 @@
 #include <linux/input.h>
 #include <linux/input/mt.h>
 #include <linux/rmi.h>
+
 #include "rmi_driver.h"
+#include "rmi_f12.h"
 
 
 /** If CTRL28 is present, it represents a bitmask of the information to be
@@ -30,6 +32,7 @@
 #define F12_REPORT_Z (1 << 5)
 #define F12_REPORT_WX (1 << 6)
 #define F12_REPORT_WY (1 << 7)
+
 /** By default, we're interested in all the data for a finger.
  */
 #define F12_REPORT_DEFAULT (F12_REPORT_TYPE | \
@@ -37,42 +40,6 @@
 	F12_REPORT_Y_LSB | F12_REPORT_Y_MSB | \
 	F12_REPORT_Z | F12_REPORT_WX | F12_REPORT_WY)
 #define F12_REPORT_ENABLES_REG 28
-
-/**
- * Describes the size and subpacket presence for a given packet register.
- * @nr_subpackets - how many subpackets can there be in this register (not
- * necessarily the number that are present).
- * @subpackets - a bitmap indicating which subpacket registers are present.
- * @offset - offset of this register from the base address for the register
- * type it defines.
- */
-struct rmi_register_desc {
-	u8 size;
-	u8 nr_subpackets;
-	unsigned long *subpackets;
-	u16 offset;
-};
-
-/** Register descriptors provide an extensible way to describe which registers
- * are or are not present for a function on a given device.
- *
- * @presence_size - says how many bytes are in the register presence registers
- * @structure_size - says how many bytes are in the register structure
- * registers
- * @presence - if a register is present in the function, the corresponding bit
- * in this bitmap is set.
- * @nr_registers - the total number of registers in the structure array.
- * @structure - a sparse array of rmi_register_desc that describe how which
- * subpackets are present in each defined packet register.
- */
-struct rmi_reg_descriptor {
-	u8	presence_size;
-	u16	structure_size;
-	u16	presence_bits;
-	unsigned long *presence;
-	u16	nr_registers;
-	struct flex_array *structure;
-};
 
 /**
  * Conveniently returns true if the register is present.
@@ -136,16 +103,6 @@ static bool rmi_register_has_subpacket(struct rmi_reg_descriptor *desc, int reg,
 		return test_bit(sp, rdesc->subpackets);
 	return false;
 }
-
-
-/**
- * Register descriptors for a given function.
- */
-struct rmi_descriptors {
-	struct rmi_reg_descriptor query;
-	struct rmi_reg_descriptor control;
-	struct rmi_reg_descriptor data;
-};
 
 /**
  * Reads and parses the register descriptor.
@@ -340,34 +297,6 @@ static int rmi_read_descriptors(struct rmi_function *fn,
 	return retval;
 }
 
-/**
- * Query 0 describes the general properties of an F12 sensor.
- *
- * @has_register_descriptors - if 1, the F12 packet register format is support.
- */
-struct rmi_f12_general_info {
-	u8 has_register_descriptors:1;
-	u8 reserved:7;
-} __attribute__((__packed__));
-
-
-/**
- * Control registers for overall sensor operating parameters.
- */
-struct f12_ctl_sensor_tuning {
-	u8 *buffer;
-	u16 *x_max_le;
-	u16 *y_max_le;
-	u16 *rx_pitch_le;
-	u16 *tx_pitch_le;
-	u8 *rx_clip_low;
-	u8 *rx_clip_high;
-	u8 *tx_clip_low;
-	u8 *tx_clip_high;
-	u8 *nr_rx;
-	u8 *nr_tx;
-};
-
 #define F12_OBJECT_NONE 0
 #define F12_OBJECT_FINGER 1
 #define F12_OBJECT_STYLUS 2
@@ -399,45 +328,9 @@ struct rmi_f12_object_data {
 #define DEFAULT_MAX_ABS_MT_ORIENTATION 1
 #define DEFAULT_MIN_ABS_MT_TRACKING_ID 1
 
-#define NAME_BUFFER_SIZE 256
-
-
 #define F12_FINGER_DATA_REG 1
 #define F12_SENSOR_TUNING_REG 8
 #define F12_COORD_MAX_SP 0
-
-/**
- * Data pertaining to a given F12 device.
- *
- * @info - the general information query
- * @desc - register decsriptors as determined by reading the query registers.
- * @buf_size - how many bytes in the object data buffer
- * @object_buf - buffer for reading object (finger) position data
- * @max_objects - the maximum number of objects (fingers) that might be
- * reported.
- * @object_address - RMI4 register address for the object position data
- * @x_max - maximum X coordinate
- * @y_max - maximum Y coordinate
- * @sensor_tuning - sensor tuning control registers.
- * @input - input device for reporting positions.
- * @input_phys - string for naming the input device.
- */
-struct f12_data {
-	struct rmi_f12_general_info info;
-	struct rmi_descriptors desc;
-	u8 buf_size;
-	u8 *object_buf;
-	u8 max_objects;
-	u16 object_address;
-
-	u16 x_max;
-	u16 y_max;
-
-	struct f12_ctl_sensor_tuning sensor_tuning;
-
-	struct input_dev *input;
-	char input_phys[NAME_BUFFER_SIZE];
-};
 
 /**
  * Read the Sensor Tuning control register and set operating parameters
@@ -459,9 +352,11 @@ static void read_sensor_tuning(struct rmi_function *fn) {
 	if (!f12->sensor_tuning.buffer)
 		return;
 
-	retval = rmi_read_block(fn->rmi_dev, fn->fd.control_base_addr, f12->sensor_tuning.buffer, buffer_size);
-	if (!retval) {
-		dev_warn(&fn->dev, "WARNING: Failed to read sensor tuning.  Using default values.\n");
+	retval = rmi_read_block(fn->rmi_dev, fn->fd.control_base_addr,
+				f12->sensor_tuning.buffer, buffer_size);
+	if (retval < 0) {
+		dev_warn(&fn->dev, "WARNING: Failed to read sensor tuning (code: %d).  Using default values.\n",
+			 retval);
 		return;
 	}
 
@@ -504,11 +399,10 @@ static void report_one_object(struct f12_data *f12, struct rmi_f12_object_data *
 			le16_to_cpu(object->pos_x));
 		input_report_abs(f12->input, ABS_MT_POSITION_Y,
 			le16_to_cpu(object->pos_y));
-//  		pr_debug(
-//  			"finger[%d]:%d - x:%d y:%d z:%d wx:%d wy:%d\n",
-//  			slot, object->type, le16_to_cpu(object->pos_x),
-//  			le16_to_cpu(object->pos_y), object->z,
-//  			object->wx, object->wy);
+		pr_debug("rmi finger[%d]:%d - x:%d y:%d z:%d wx:%d wy:%d\n",
+			slot, object->type, le16_to_cpu(object->pos_x),
+			le16_to_cpu(object->pos_y), object->z,
+			object->wx, object->wy);
 	}
 }
 

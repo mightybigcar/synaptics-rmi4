@@ -164,9 +164,9 @@ static int rmi_i2c_read_block(struct rmi_transport_dev *xport, u16 addr,
 		retval = -EIO;
 
 exit:
-	dev_dbg(&client->dev,
-		"read %zd bytes at %#06x: %d (%*ph)\n",
-		len, addr, retval, (int)len, buf);
+// 	dev_dbg(&client->dev,
+// 		"read %zd bytes at %#06x: %d (%*ph)\n",
+// 		len, addr, retval, (int)len, buf);
 
 	xport->stats.rx_count++;
 	if (retval < 0)

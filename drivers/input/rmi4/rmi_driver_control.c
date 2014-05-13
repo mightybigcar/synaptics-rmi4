@@ -149,16 +149,16 @@ static int setup_debugfs(struct driver_ctl_data *ctl_data)
 {
 	struct rmi_device *rmi_dev = ctl_data->rmi_dev;
 	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
-	struct rmi_transport_info *info = &rmi_dev->xport->info;
+	struct rmi_transport_stats *info = &rmi_dev->xport->stats;
 	int retval = 0;
 
 	if (!rmi_dev->debugfs_root)
 		return 0;
 
 
-	if (IS_ENABLED(CONFIG_RMI4_SPI) && !strncmp("spi", info->proto, 3)) {
+	if (IS_ENABLED(CONFIG_RMI4_SPI)) {
 		ctl_data->debugfs_delay = debugfs_create_file("delay",
-				RMI_RW_ATTR, rmi_dev->debugfs_root, rmi_dev,
+				(S_IRUGO | S_IWUGO), rmi_dev->debugfs_root, rmi_dev,
 				&delay_fops);
 		if (!ctl_data->debugfs_delay || IS_ERR(ctl_data->debugfs_delay)) {
 			dev_warn(&rmi_dev->dev, "Failed to create debugfs delay.\n");
@@ -166,17 +166,17 @@ static int setup_debugfs(struct driver_ctl_data *ctl_data)
 		}
 	}
 
-	if (!debugfs_create_u32_array("transport_stats", RMI_RO_ATTR,
+	if (!debugfs_create_u32_array("transport_stats", S_IRUGO,
 		rmi_dev->debugfs_root, (u32 *)&info->tx_count, 6))
 		dev_warn(&rmi_dev->dev,
 			 "Failed to create debugfs transport_stats\n");
 
 
-	if (debugfs_create_bool("irq_debug", RMI_RW_ATTR, rmi_dev->debugfs_root,
+	if (debugfs_create_bool("irq_debug", (S_IRUGO | S_IWUGO), rmi_dev->debugfs_root,
 			&data->irq_debug))
 		dev_warn(&rmi_dev->dev, "Failed to create debugfs irq_debug.\n");
 
-	if (!debugfs_create_u32("attn_count", RMI_RO_ATTR,
+	if (!debugfs_create_u32("attn_count", S_IRUGO,
 				rmi_dev->debugfs_root, &data->attn_count))
 		dev_warn(&rmi_dev->dev, "Failed to create debugfs attn_count.\n");
 
@@ -233,7 +233,7 @@ static ssize_t rmi_driver_bsr_store(struct device *dev,
 	return count;
 }
 
-static struct device_attribute bsr_attribute = __ATTR(bsr, RMI_RW_ATTR,
+static struct device_attribute bsr_attribute = __ATTR(bsr, (S_IRUGO | S_IWUGO),
 	       rmi_driver_bsr_show, rmi_driver_bsr_store);
 
 static int driver_ctl_cleanup(struct rmi_control_handler_data *hdata)
@@ -246,7 +246,7 @@ static int driver_ctl_cleanup(struct rmi_control_handler_data *hdata)
 
 	teardown_debugfs(ctl_data);
 
-	if (driver_data->pdt_props.has_bsr)
+	if (driver_data->pdt_props & RMI_PDT_PROPS_HAS_BSR)
 		device_remove_file(&rmi_dev->dev, &bsr_attribute);
 
 	devm_kfree(dev, ctl_data);
@@ -270,7 +270,7 @@ static struct rmi_control_handler_data *driver_ctl_attach(struct device *dev, vo
 	ctl_data->rmi_dev = rmi_dev;
 
 	dev_dbg(dev, "Checking BSR.\n");
-	if (driver_data && driver_data->pdt_props.has_bsr) {
+	if (driver_data->pdt_props & RMI_PDT_PROPS_HAS_BSR) {
 		retval = device_create_file(dev, &bsr_attribute);
 		if (retval < 0)
 			dev_warn(dev, "Failed to create sysfs file bsr.\n");

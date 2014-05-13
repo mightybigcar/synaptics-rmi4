@@ -9,6 +9,7 @@
 #include <linux/kernel.h>
 #include <linux/device.h>
 
+#include "rmi_bus.h"
 #include "rmi_driver.h"
 #include "rmi_control.h"
 
@@ -50,7 +51,7 @@ static int rmi_ctl_attach(struct device *dev, void *data)
 	if (dev->type != handler->dev_type)
 		return 0;
 
-	if (dev->type == &rmi_function_type) {
+	if (rmi_is_function_device(dev)) {
 		struct rmi_function *fn = to_rmi_function(dev);
 		if (fn->fd.function_number != handler->function_id)
 			return 0;
