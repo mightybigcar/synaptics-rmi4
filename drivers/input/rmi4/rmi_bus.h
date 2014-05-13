@@ -12,7 +12,6 @@
 
 #include <linux/kernel.h>
 #include <linux/device.h>
-#include <linux/earlysuspend.h>
 #include <linux/interrupt.h>
 #include <linux/input.h>
 #include <linux/list.h>
@@ -23,36 +22,14 @@
 #include <linux/debugfs.h>
 #include <linux/rmi.h>
 
-extern struct bus_type rmi_bus_type;
-
-extern struct device_type rmi_function_type;
-
-#define rmi_is_function_device(dev) \
-	(dev->type == &rmi_function_type)
-
-
-extern struct device_type rmi_device_type;
-
-#define rmi_is_physical_device(dev) \
-	(dev->type == &rmi_device_type)
-
-
-/* Permissions for sysfs attributes.  Since the permissions policy will change
- * on a global basis in the future, rather than edit all sysfs attrs everywhere
- * in the driver (and risk screwing that up in the process), we use this handy
- * set of #defines.  That way when we change the policy for sysfs permissions,
- * we only need to change them here.
- */
-#define RMI_RO_ATTR S_IRUGO
-#define RMI_RW_ATTR (S_IRUGO | S_IWUGO)
-#define RMI_WO_ATTR S_IWUGO
+struct rmi_device;
 
 /**
- * struct rmi_function - represents an a particular RMI4 function on a given
- * RMI4 sensor.
+ * struct rmi_function - represents the implementation of an RMI4
+ * function for a particular device (basically, a driver for that RMI4 function)
  *
  * @fd: The function descriptor of the RMI function
- * @rmi_dev: Pointer to the RMI device associated with this function device
+ * @rmi_dev: Pointer to the RMI device associated with this function container
  * @dev: The device associated with this particular function.
  *
  * @num_of_irqs: The number of irqs needed by this function
@@ -61,9 +38,8 @@ extern struct device_type rmi_device_type;
  * interrupt handling.
  * @data: Private data pointer
  *
- * @list: Used to create a list of function devices.
+ * @node: entry in device's list of functions
  * @debugfs_root: used during debugging
- *
  */
 struct rmi_function {
 	struct rmi_function_descriptor fd;
@@ -75,17 +51,22 @@ struct rmi_function {
 	void *data;
 	struct list_head node;
 
+#ifdef CONFIG_RMI4_DEBUG
 	struct dentry *debugfs_root;
+#endif
 };
 
-#define to_rmi_function(d) \
-	container_of(d, struct rmi_function, dev)
+#define to_rmi_function(d)	container_of(d, struct rmi_function, dev)
+
+bool rmi_is_function_device(struct device *dev);
+
+int __must_check rmi_register_function(struct rmi_function *);
+void rmi_unregister_function(struct rmi_function *);
 
 /**
- * struct rmi_function_driver - driver routines for a particular RMI function.
+ * struct rmi_function_handler - driver routines for a particular RMI function.
  *
  * @func: The RMI function number
- * @probe: Called when the handler is successfully matched to a function device.
  * @reset: Called when a reset of the touch sensor is detected.  The routine
  * should perform any out-of-the-ordinary reset handling that might be
  * necessary.  Restoring of touch sensor configuration registers should be
@@ -95,32 +76,34 @@ struct rmi_function {
  * configuration settings to the device.
  * @attention: Called when the IRQ(s) for the function are set by the touch
  * sensor.
+ * @suspend: Should perform any required operations to suspend the particular
+ * function.
+ * @resume: Should perform any required operations to resume the particular
+ * function.
  *
  * All callbacks are expected to return 0 on success, error code on failure.
  */
-struct rmi_function_driver {
+struct rmi_function_handler {
 	struct device_driver driver;
 
 	u8 func;
-	int (*probe)(struct rmi_function *fc);
-	int (*remove)(struct rmi_function *fc);
-	int (*config)(struct rmi_function *fc);
-	int (*reset)(struct rmi_function *fc);
-	int (*attention)(struct rmi_function *fc, unsigned long *irq_bits);
+
+	int (*probe)(struct rmi_function *fn);
+	void (*remove)(struct rmi_function *fn);
+	int (*config)(struct rmi_function *fn);
+	int (*reset)(struct rmi_function *fn);
+	int (*attention)(struct rmi_function *fn, unsigned long *irq_bits);
 };
 
-#define to_rmi_function_driver(d) \
-	container_of(d, struct rmi_function_driver, driver)
+#define to_rmi_function_handler(d) \
+		container_of(d, struct rmi_function_handler, driver)
 
-int __must_check __rmi_register_function_driver(struct rmi_function_driver *,
-						struct module *, const char *);
-#define rmi_register_function_driver(handler) \
-	__rmi_register_function_driver(handler, THIS_MODULE, KBUILD_MODNAME)
+int __must_check __rmi_register_function_handler(struct rmi_function_handler *,
+						 struct module *, const char *);
+#define rmi_register_function_handler(handler) \
+	__rmi_register_function_handler(handler, THIS_MODULE, KBUILD_MODNAME)
 
-void rmi_unregister_function_driver(struct rmi_function_driver *);
-
-int __must_check rmi_register_function_dev(struct rmi_function *);
-void rmi_unregister_function_dev(struct rmi_function *);
+void rmi_unregister_function_handler(struct rmi_function_handler *);
 
 /**
  * struct rmi_driver - driver for an RMI4 sensor on the RMI bus.
@@ -141,77 +124,81 @@ struct rmi_driver {
 	int (*irq_handler)(struct rmi_device *rmi_dev, int irq);
 	int (*reset_handler)(struct rmi_device *rmi_dev);
 	int (*store_irq_mask)(struct rmi_device *rmi_dev,
-			      unsigned long *new_interupts);
+				unsigned long *new_interupts);
 	int (*restore_irq_mask)(struct rmi_device *rmi_dev);
 	int (*store_productid)(struct rmi_device *rmi_dev);
 	int (*set_input_params)(struct rmi_device *rmi_dev,
-				struct input_dev *input);
-	int (*enable)(struct rmi_device *rmi_dev);
-	void (*disable)(struct rmi_device *rmi_dev);
-	int (*remove)(struct rmi_device *rmi_dev);
+			struct input_dev *input);
 	void *data;
 };
 
 #define to_rmi_driver(d) \
-	container_of(d, struct rmi_driver, driver)
+	container_of(d, struct rmi_driver, driver);
 
-/** struct rmi_transport_info - diagnostic information about the RMI transport,
- * used in the transport-info debugfs file.
+/**
+ * struct rmi_transport_stats - diagnostic information about the RMI transport
+ * device, used in the xport_info debugfs file.
  *
  * @proto String indicating the protocol being used.
  * @tx_count Number of transmit operations.
- * @tx_bytes Number of bytes transmitted.
  * @tx_errs  Number of errors encountered during transmit operations.
+ * @tx_bytes Number of bytes transmitted.
  * @rx_count Number of receive operations.
- * @rx_bytes Number of bytes received.
  * @rx_errs  Number of errors encountered during receive operations.
- * @att_count Number of times ATTN assertions have been handled.
+ * @rx_bytes Number of bytes received.
  */
-struct rmi_transport_info {
-	char *proto;
-	long tx_count;
-	long tx_bytes;
-	long tx_errs;
-	long rx_count;
-	long rx_bytes;
-	long rx_errs;
+struct rmi_transport_stats {
+	unsigned long tx_count;
+	unsigned long tx_errs;
+	size_t tx_bytes;
+	unsigned long rx_count;
+	unsigned long rx_errs;
+	size_t rx_bytes;
 };
 
 /**
- * struct rmi_transport_device - represent an RMI transport conncection
+ * struct rmi_transport_dev - represent an RMI transport device
  *
  * @dev: Pointer to the communication device, e.g. i2c or spi
  * @rmi_dev: Pointer to the RMI device
- * @write_block: Writing a block of data to the specified address
- * @read_block: Read a block of data from the specified address.
  * @irq_thread: if not NULL, the sensor driver will use this instead of the
  * default irq_thread implementation.
  * @hard_irq: if not NULL, the sensor driver will use this for the hard IRQ
  * handling
- * @data: Private data pointer
+ * @proto_name: name of the transport protocol (SPI, i2c, etc)
+ * @ops: pointer to transport operations implementation
+ * @stats: transport statistics
  *
  * The RMI transport device implements the glue between different communication
- * buses such as I2C and SPI and the physical device on the RMI bus.
+ * buses such as I2C and SPI.
  *
  */
-struct rmi_transport_device {
+struct rmi_transport_dev {
 	struct device *dev;
 	struct rmi_device *rmi_dev;
-
-	int (*write_block)(struct rmi_transport_device *xport, u16 addr,
-			   const void *buf, const int len);
-	int (*read_block)(struct rmi_transport_device *xport, u16 addr,
-			  void *buf, const int len);
-
-	int (*enable_device) (struct rmi_transport_device *xport);
-	void (*disable_device) (struct rmi_transport_device *xport);
 
 	irqreturn_t (*irq_thread)(int irq, void *p);
 	irqreturn_t (*hard_irq)(int irq, void *p);
 
-	void *data;
+	const char *proto_name;
+	const struct rmi_transport_ops *ops;
+	struct rmi_transport_stats stats;
+};
 
-	struct rmi_transport_info info;
+/**
+ * struct rmi_transport_ops - defines transport protocol operations.
+ *
+ * @write_block: Writing a block of data to the specified address
+ * @read_block: Read a block of data from the specified address.
+ */
+struct rmi_transport_ops {
+	int (*write_block)(struct rmi_transport_dev *xport, u16 addr,
+			   const void *buf, size_t len);
+	int (*read_block)(struct rmi_transport_dev *xport, u16 addr,
+			  void *buf, size_t len);
+
+	int (*enable_device) (struct rmi_transport_dev *xport);
+	void (*disable_device) (struct rmi_transport_dev *xport);
 };
 
 /**
@@ -222,10 +209,6 @@ struct rmi_transport_device {
  * @driver: Pointer to associated driver
  * @xport: Pointer to the transport interface
  * @debugfs_root: base for this particular sensor device.
- * @interrupt_restore_block_flag: TBD
- * @supports_device_wakeup: if true, the driver is configured to support
- * wakeup events from the touch sensor, and the touch sensor is capable of
- * generating such events.
  *
  */
 struct rmi_device {
@@ -233,20 +216,17 @@ struct rmi_device {
 	int number;
 
 	struct rmi_driver *driver;
-	struct rmi_transport_device *xport;
+	struct rmi_transport_dev *xport;
 
+#ifdef CONFIG_RMI4_DEBUG
 	struct dentry *debugfs_root;
-	int    interrupt_restore_block_flag;
-	bool   supports_device_wakeup;
-
-
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	struct early_suspend early_suspend_handler;
 #endif
 };
 
 #define to_rmi_device(d) container_of(d, struct rmi_device, dev)
 #define to_rmi_platform_data(d) ((d)->xport->dev->platform_data)
+
+bool rmi_is_physical_device(struct device *dev);
 
 /**
  * rmi_read - read a single byte
@@ -254,12 +234,12 @@ struct rmi_device {
  * @addr: The address to read from
  * @buf: The read buffer
  *
- * Reads a byte of data using the underlying transport into buf. It
+ * Reads a byte of data using the underlaying transport protocol in to buf. It
  * returns zero or a negative error code.
  */
 static inline int rmi_read(struct rmi_device *d, u16 addr, void *buf)
 {
-	return d->xport->read_block(d->xport, addr, buf, 1);
+	return d->xport->ops->read_block(d->xport, addr, buf, 1);
 }
 
 /**
@@ -269,13 +249,13 @@ static inline int rmi_read(struct rmi_device *d, u16 addr, void *buf)
  * @buf: The read buffer
  * @len: Length of the read buffer
  *
- * Reads a block of byte data using the underlying transport into buf.
- * It returns the amount of bytes read or a negative error code.
+ * Reads a block of byte data using the underlaying transport protocol in
+ * to buf.  It returns the amount of bytes read or a negative error code.
  */
 static inline int rmi_read_block(struct rmi_device *d, u16 addr, void *buf,
 				 const int len)
 {
-	return d->xport->read_block(d->xport, addr, buf, len);
+	return d->xport->ops->read_block(d->xport, addr, buf, len);
 }
 
 /**
@@ -284,12 +264,12 @@ static inline int rmi_read_block(struct rmi_device *d, u16 addr, void *buf,
  * @addr: The address to write to
  * @data: The data to write
  *
- * Writes a byte from buf using the underlying transport. It
+ * Writes a byte from buf using the underlaying transport protocol. It
  * returns zero or a negative error code.
  */
 static inline int rmi_write(struct rmi_device *d, u16 addr, const u8 data)
 {
-	return d->xport->write_block(d->xport, addr, &data, 1);
+	return d->xport->ops->write_block(d->xport, addr, &data, 1);
 }
 
 /**
@@ -299,31 +279,34 @@ static inline int rmi_write(struct rmi_device *d, u16 addr, const u8 data)
  * @buf: The write buffer
  * @len: Length of the write buffer
  *
- * Writes a block of byte data from buf using the underlying transport.
- * It returns the amount of bytes written or a negative error code.
+ * Writes a block of byte data from buf using the underlaying transport
+ * protocol.  It returns the amount of bytes written or a negative error code.
  */
 static inline int rmi_write_block(struct rmi_device *d, u16 addr,
 				  const void *buf, const int len)
 {
-	return d->xport->write_block(d->xport, addr, buf, len);
+	return d->xport->ops->write_block(d->xport, addr, buf, len);
 }
 
-int rmi_register_transport_device(struct rmi_transport_device *xport);
-void rmi_unregister_transport_device(struct rmi_transport_device *xport);
+int rmi_register_transport_device(struct rmi_transport_dev *xport);
+void rmi_unregister_transport_device(struct rmi_transport_dev *xport);
 int rmi_for_each_dev(void *data, int (*func)(struct device *dev, void *data));
 
 /**
- * module_rmi_function_driver() - Helper macro for registering a function driver
- * @__rmi_driver: rmi_function_driver struct
+ * module_rmi_driver() - Helper macro for registering a function driver
+ * @__rmi_driver: rmi_function_handler struct
  *
- * Helper macro for RMI4 function drivers which do not do anything special in
- * module init/exit. This eliminates a lot of boilerplate. Each module
+ * Helper macro for RMI4 function drivers which do not do anything special
+ * in module init/exit. This eliminates a lot of boilerplate. Each module
  * may only use this macro once, and calling it replaces module_init()
  * and module_exit().
  */
-#define module_rmi_function_driver(__rmi_driver)	\
+#define module_rmi_driver(__rmi_driver)			\
 	module_driver(__rmi_driver,			\
-		rmi_register_function_driver,	\
-		rmi_unregister_function_driver)
+		      rmi_register_function_handler,	\
+		      rmi_unregister_function_handler)
+
+
+extern struct bus_type rmi_bus_type;
 
 #endif

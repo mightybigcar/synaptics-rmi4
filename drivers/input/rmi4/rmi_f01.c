@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2013 Synaptics Incorporated
+ * Copyright (c) 2011-2014 Synaptics Incorporated
  * Copyright (c) 2011 Unixphere
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -12,14 +12,32 @@
 #include <linux/rmi.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
-
 #include "rmi_driver.h"
 #include "rmi_f01.h"
 
-#define FUNCTION_NUMBER 0x01
+struct f01_data {
+	struct f01_basic_properties properties;
+
+	struct f01_device_control device_control;
+	struct mutex control_mutex;
+
+	u8 device_status;
+
+	u16 interrupt_enable_addr;
+	u16 doze_interval_addr;
+	u16 wakeup_threshold_addr;
+	u16 doze_holdoff_addr;
+	int irq_count;
+	int num_of_irq_regs;
+
+#ifdef CONFIG_PM_SLEEP
+	bool suspended;
+	bool old_nosleep;
+#endif
+};
 
 static int rmi_f01_alloc_memory(struct rmi_function *fn,
-	int num_of_irq_regs)
+				int num_of_irq_regs)
 {
 	struct f01_data *f01;
 
@@ -30,7 +48,7 @@ static int rmi_f01_alloc_memory(struct rmi_function *fn,
 	}
 
 	f01->device_control.interrupt_enable = devm_kzalloc(&fn->dev,
-			sizeof(u8)*(num_of_irq_regs),
+			sizeof(u8) * (num_of_irq_regs),
 			GFP_KERNEL);
 	if (!f01->device_control.interrupt_enable) {
 		dev_err(&fn->dev, "Failed to allocate interrupt enable.\n");
@@ -41,51 +59,23 @@ static int rmi_f01_alloc_memory(struct rmi_function *fn,
 	return 0;
 }
 
-static void get_board_and_rev(struct rmi_function *fn,
-			struct rmi_driver_data *driver_data)
-{
-	struct f01_data *data = fn->data;
-	int retval;
-	int board = 0, rev = 0;
-	int i;
-	static const char * const pattern[] = {
-		"tm%4d-%d", "s%4d-%d", "s%4d-ver%1d", "s%4d_ver%1d"};
-	u8 product_id[RMI_PRODUCT_ID_LENGTH+1];
-
-	for (i = 0; i < strlen(data->properties.product_id); i++)
-		product_id[i] = tolower(data->properties.product_id[i]);
-	product_id[i] = '\0';
-
-	for (i = 0; i < ARRAY_SIZE(pattern); i++) {
-		retval = sscanf(product_id, pattern[i], &board, &rev);
-		if (retval)
-			break;
-	}
-
-	/* save board and rev data in the rmi_driver_data */
-	driver_data->board = board;
-	driver_data->rev = rev;
-	dev_dbg(&fn->dev, "From product ID %s, set board: %d rev: %d\n",
-			product_id, driver_data->board, driver_data->rev);
-}
-
 #define PACKAGE_ID_BYTES 4
 #define BUILD_ID_BYTES 3
 
 int rmi_f01_read_properties(struct rmi_device *rmi_dev, u16 query_base_addr,
-			    struct f01_basic_properties *props)
+				   struct f01_basic_properties *props)
 {
-	int error;
 	u8 basic_query[RMI_F01_BASIC_QUERY_LEN];
+	u8 info_buf[4];
+	int error;
+	int i;
 	u16 query_addr = query_base_addr;
 	u16 prod_info_addr;
-	u8 info_buf[4];
-	int i;
-	
+
 	error = rmi_read_block(rmi_dev, query_base_addr,
-				basic_query, sizeof(basic_query));
+			       basic_query, sizeof(basic_query));
 	if (error < 0) {
-		dev_err(&rmi_dev->dev, "Failed to read F01 query registers.\n");
+		dev_err(&rmi_dev->dev, "Failed to read device query registers.\n");
 		return error;
 	}
 
@@ -93,21 +83,25 @@ int rmi_f01_read_properties(struct rmi_device *rmi_dev, u16 query_base_addr,
 	props->manufacturer_id = basic_query[0];
 
 	props->has_lts = basic_query[1] & RMI_F01_QRY1_HAS_LTS;
-	props->has_sensor_id =
-			!!(basic_query[1] & RMI_F01_QRY1_HAS_SENSOR_ID);
 	props->has_adjustable_doze =
 			basic_query[1] & RMI_F01_QRY1_HAS_ADJ_DOZE;
 	props->has_adjustable_doze_holdoff =
 			basic_query[1] & RMI_F01_QRY1_HAS_ADJ_DOZE_HOFF;
 	props->has_query42 = basic_query[1] & RMI_F01_QRY1_HAS_PROPS_2;
 
-	snprintf(props->dom, sizeof(props->dom),
-		"20%02d/%02d/%02d",
-		basic_query[5] & RMI_F01_QRY5_YEAR_MASK,
-		basic_query[6] & RMI_F01_QRY6_MONTH_MASK,
-		basic_query[7] & RMI_F01_QRY7_DAY_MASK);
+	props->productinfo =
+			((basic_query[2] & RMI_F01_QRY2_PRODINFO_MASK) << 7) |
+			(basic_query[3] & RMI_F01_QRY2_PRODINFO_MASK);
 
+	snprintf(props->dom, sizeof(props->dom), "20%02d/%02d/%02d",
+		 basic_query[5] & RMI_F01_QRY5_YEAR_MASK,
+		 basic_query[6] & RMI_F01_QRY6_MONTH_MASK,
+		 basic_query[7] & RMI_F01_QRY7_DAY_MASK);
+
+	memcpy(props->product_id, &basic_query[11], RMI_PRODUCT_ID_LENGTH);
+	props->product_id[RMI_PRODUCT_ID_LENGTH] = '\0';
 	query_addr += 11;
+
 
 	error = rmi_read_block(rmi_dev, query_addr, props->product_id,
 				RMI_PRODUCT_ID_LENGTH);
@@ -124,18 +118,20 @@ int rmi_f01_read_properties(struct rmi_device *rmi_dev, u16 query_base_addr,
 
 	query_addr += RMI_PRODUCT_ID_LENGTH;
 	if (props->has_lts) {
-		error = rmi_read_block(rmi_dev, query_addr, info_buf, 1);
+		error = rmi_read(rmi_dev, query_addr, info_buf);
 		if (error < 0) {
 			dev_err(&rmi_dev->dev, "Failed to read LTS info.\n");
 			return error;
 		}
-		props->slave_asic_rows = info_buf[0] & RMI_F01_QRY21_SLAVE_ROWS_MASK;
-		props->slave_asic_columns = (info_buf[1] & RMI_F01_QRY21_SLAVE_COLUMNS_MASK) >> 3;
+		props->slave_asic_rows = info_buf[0] &
+				RMI_F01_QRY21_SLAVE_ROWS_MASK;
+		props->slave_asic_columns = (info_buf[1] &
+				RMI_F01_QRY21_SLAVE_COLUMNS_MASK) >> 3;
 		query_addr++;
 	}
 
 	if (props->has_sensor_id) {
-		error = rmi_read_block(rmi_dev, query_addr, &props->sensor_id, 1);
+		error = rmi_read(rmi_dev, query_addr, &props->sensor_id);
 		if (error < 0) {
 			dev_err(&rmi_dev->dev, "Failed to read sensor ID.\n");
 			return error;
@@ -148,23 +144,26 @@ int rmi_f01_read_properties(struct rmi_device *rmi_dev, u16 query_base_addr,
 		query_addr += RMI_F01_LTS_RESERVED_SIZE;
 
 	if (props->has_query42) {
-		error = rmi_read_block(rmi_dev, query_addr, info_buf, 1);
+		error = rmi_read(rmi_dev, query_addr, info_buf);
 		if (error < 0) {
 			dev_err(&rmi_dev->dev, "Failed to read additional properties.\n");
 			return error;
 		}
-		props->has_ds4_queries = info_buf[0] & RMI_F01_QRY42_DS4_QUERIES;
-		props->has_multi_physical = info_buf[0] & RMI_F01_QRY42_MULTI_PHYS;
+		props->has_ds4_queries = info_buf[0] &
+				RMI_F01_QRY42_DS4_QUERIES;
+		props->has_multi_physical = info_buf[0] &
+				RMI_F01_QRY42_MULTI_PHYS;
 		props->has_guest = info_buf[0] & RMI_F01_QRY42_GUEST;
 		props->has_swr = info_buf[0] & RMI_F01_QRY42_SWR;
-		props->has_nominal_report_rate = info_buf[0] & RMI_F01_QRY42_NOMINAL_REPORT;
-		props->has_recalibration_interval = info_buf[0] & RMI_F01_QRY42_RECAL_INTERVAL;
+		props->has_nominal_report_rate = info_buf[0] &
+				RMI_F01_QRY42_NOMINAL_REPORT;
+		props->has_recalibration_interval = info_buf[0] &
+				RMI_F01_QRY42_RECAL_INTERVAL;
 		query_addr++;
 	}
 
 	if (props->has_ds4_queries) {
-		error = rmi_read_block(rmi_dev, query_addr,
-				       &props->ds4_query_length, 1);
+		error = rmi_read(rmi_dev, query_addr, &props->ds4_query_length);
 		if (error < 0) {
 			dev_err(&rmi_dev->dev, "Failed to read DS4 query length size.\n");
 			return error;
@@ -174,7 +173,7 @@ int rmi_f01_read_properties(struct rmi_device *rmi_dev, u16 query_base_addr,
 
 	for (i = 1; i <= props->ds4_query_length; i++) {
 		u8 val;
-		error = rmi_read_block(rmi_dev, query_addr, &val, 1);
+		error = rmi_read(rmi_dev, query_addr, &val);
 		query_addr++;
 		if (error < 0) {
 			dev_err(&rmi_dev->dev, "Failed to read F01_RMI_QUERY43.%02d, code: %d.\n",
@@ -183,21 +182,28 @@ int rmi_f01_read_properties(struct rmi_device *rmi_dev, u16 query_base_addr,
 		}
 		switch (i) {
 		case 1:
-			props->has_package_id_query = val & RMI_F01_QRY43_01_PACKAGE_ID;
-			props->has_build_id_query = val & RMI_F01_QRY43_01_BUILD_ID;
+			props->has_package_id_query = val &
+					RMI_F01_QRY43_01_PACKAGE_ID;
+			props->has_build_id_query = val &
+					RMI_F01_QRY43_01_BUILD_ID;
 			props->has_reset_query = val & RMI_F01_QRY43_01_RESET;
-			props->has_maskrev_query = val & RMI_F01_QRY43_01_PACKAGE_ID;
+			props->has_maskrev_query = val &
+					RMI_F01_QRY43_01_PACKAGE_ID;
 			break;
 		case 2:
 			props->has_i2c_control = val & RMI_F01_QRY43_02_I2C_CTL;
 			props->has_spi_control = val & RMI_F01_QRY43_02_SPI_CTL;
-			props->has_attn_control = val & RMI_F01_QRY43_02_ATTN_CTL;
-			props->has_win8_vendor_info = val & RMI_F01_QRY43_02_WIN8;
+			props->has_attn_control = val &
+					RMI_F01_QRY43_02_ATTN_CTL;
+			props->has_win8_vendor_info = val &
+					RMI_F01_QRY43_02_WIN8;
 			props->has_timestamp = val & RMI_F01_QRY43_02_TIMESTAMP;
 			break;
 		case 3:
-			props->has_tool_id_query = val & RMI_F01_QRY43_03_TOOL_ID;
-			props->has_fw_revision_query = val & RMI_F01_QRY43_03_FW_REVISION;
+			props->has_tool_id_query = val &
+					RMI_F01_QRY43_03_TOOL_ID;
+			props->has_fw_revision_query = val &
+					RMI_F01_QRY43_03_FW_REVISION;
 			break;
 		default:
 			dev_warn(&rmi_dev->dev, "No handling for F01_RMI_QUERY43.%02d.\n",
@@ -235,46 +241,9 @@ int rmi_f01_read_properties(struct rmi_device *rmi_dev, u16 query_base_addr,
 			u16 *val = (u16 *)info_buf;
 			props->build_id = le16_to_cpu(*val);
 			props->build_id += info_buf[2] * 65536;
-			dev_dbg(&rmi_dev->dev, "FW build ID: %#08x (%u).\n",
+			dev_info(&rmi_dev->dev, "FW build ID: %#08x (%u).\n",
 				props->build_id, props->build_id);
 		}
-	}
-
-	if (props->has_reset_query) {
-		u8 val;
-		error = rmi_read_block(rmi_dev, query_addr, &val, 1);
-		query_addr++;
-		if (error < 0)
-			dev_warn(&rmi_dev->dev, "Failed to read F01_RMI_QUERY44, code: %d.\n",
-				error);
-		else {
-			props->reset_enabled = val & RMI_F01_QRY44_RST_ENABLED;
-			props->reset_polarity = val & RMI_F01_QRY44_RST_POLARITY;
-			props->pullup_enabled = val & RMI_F01_QRY44_PULLUP_ENABLED;
-			props->reset_pin = (val & RMI_F01_QRY44_RST_PIN_MASK) >> 4;
-		}
-	}
-
-	if (props->has_tool_id_query) {
-		error = rmi_read_block(rmi_dev, query_addr, props->tool_id, RMI_TOOL_ID_LENGTH);
-		if (error < 0)
-			dev_warn(&rmi_dev->dev, "Failed to read F01_RMI_QUERY45, code: %d.\n",
-				 error);
-		/* This is a so-called "packet register", so address map
-		 * increments only by one. */
-		query_addr++;
-		props->tool_id[RMI_TOOL_ID_LENGTH] = '\0';
-	}
-
-	if (props->has_fw_revision_query) {
-		error = rmi_read_block(rmi_dev, query_addr, props->fw_revision, RMI_FW_REVISION_LENGTH);
-		if (error < 0)
-			dev_warn(&rmi_dev->dev, "Failed to read F01_RMI_QUERY46, code: %d.\n",
-				 error);
-		/* This is a so-called "packet register", so address map
-		 * increments only by one. */
-		query_addr++;
-		props->tool_id[RMI_FW_REVISION_LENGTH] = '\0';
 	}
 
 	return 0;
@@ -284,17 +253,19 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 {
 	u8 temp;
 	int error;
-	u16 ctrl_base_addr = fn->fd.control_base_addr;
+	u16 ctrl_base_addr;
 	struct rmi_device *rmi_dev = fn->rmi_dev;
 	struct rmi_driver_data *driver_data = dev_get_drvdata(&rmi_dev->dev);
 	struct f01_data *data = fn->data;
 	struct rmi_device_platform_data *pdata = to_rmi_platform_data(rmi_dev);
-	struct f01_basic_properties *props = &data->properties;
 
 	mutex_init(&data->control_mutex);
 
-	/* Set the configured bit and (optionally) other important stuff
-	 * in the device control register. */
+	/*
+	 * Set the configured bit and (optionally) other important stuff
+	 * in the device control register.
+	 */
+	ctrl_base_addr = fn->fd.control_base_addr;
 	error = rmi_read_block(rmi_dev, fn->fd.control_base_addr,
 			&data->device_control.ctrl0,
 			sizeof(data->device_control.ctrl0));
@@ -313,7 +284,8 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 		break;
 	}
 
-	/* Sleep mode might be set as a hangover from a system crash or
+	/*
+	 * Sleep mode might be set as a hangover from a system crash or
 	 * reboot without power cycle.  If so, clear it so the sensor
 	 * is certain to function.
 	 */
@@ -324,16 +296,11 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 		data->device_control.ctrl0 &= ~RMI_F01_CTRL0_SLEEP_MODE_MASK;
 	}
 
-	/* Set this to indicate that we've initialized the sensor.  This will
-	 * CLEAR the unconfigured bit in the status registers.  If we ever
-	 * see unconfigured become set again, we'll know that the sensor has
-	 * reset for some reason.
-	 */
 	data->device_control.ctrl0 |= RMI_F01_CRTL0_CONFIGURED_BIT;
 
 	error = rmi_write_block(rmi_dev, fn->fd.control_base_addr,
-			&data->device_control.ctrl0,
-			sizeof(data->device_control.ctrl0));
+				&data->device_control.ctrl0,
+				sizeof(data->device_control.ctrl0));
 	if (error < 0) {
 		dev_err(&fn->dev, "Failed to write F01 control.\n");
 		return error;
@@ -345,12 +312,14 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 
 	data->interrupt_enable_addr = ctrl_base_addr;
 	error = rmi_read_block(rmi_dev, ctrl_base_addr,
-			data->device_control.interrupt_enable,
-			sizeof(u8)*(data->num_of_irq_regs));
+				data->device_control.interrupt_enable,
+				sizeof(u8) * (data->num_of_irq_regs));
 	if (error < 0) {
-		dev_err(&fn->dev, "Failed to read F01 control interrupt enable register.\n");
+		dev_err(&fn->dev,
+			"Failed to read F01 control interrupt enable register.\n");
 		goto error_exit;
 	}
+
 	ctrl_base_addr += data->num_of_irq_regs;
 
 	/* dummy read in order to clear irqs */
@@ -359,19 +328,20 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 		dev_err(&fn->dev, "Failed to read Interrupt Status.\n");
 		return error;
 	}
-	
-	error = rmi_f01_read_properties(rmi_dev, fn->fd.query_base_addr, props);
-	if (error) {
-		dev_err(&fn->dev, "Failed to read F01 queries.\n");
+
+	error = rmi_f01_read_properties(rmi_dev, fn->fd.query_base_addr,
+		&data->properties);
+	if (error < 0) {
+		dev_err(&fn->dev, "Failed to read F01 properties.\n");
 		return error;
 	}
-	get_board_and_rev(fn, driver_data);
-	dev_info(&fn->dev, "found RMI device, manufacturer: %s, product: %s, date: %s\n",
-		 props->manufacturer_id == 1 ?
-		 "synaptics" : "unknown", props->product_id, props->dom);
+	dev_info(&fn->dev, "found RMI device, manufacturer: %s, product: %s, fw build: %d.\n",
+		 data->properties.manufacturer_id == 1 ?
+							"Synaptics" : "unknown",
+		 data->properties.product_id, data->properties.build_id);
 
 	/* read control register */
-	if (props->has_adjustable_doze) {
+	if (data->properties.has_adjustable_doze) {
 		data->doze_interval_addr = ctrl_base_addr;
 		ctrl_base_addr++;
 
@@ -415,7 +385,7 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 		}
 	}
 
-	if (props->has_adjustable_doze_holdoff) {
+	if (data->properties.has_adjustable_doze_holdoff) {
 		data->doze_holdoff_addr = ctrl_base_addr;
 		ctrl_base_addr++;
 
@@ -445,20 +415,22 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 		goto error_exit;
 	}
 
+	driver_data->f01_bootloader_mode =
+			RMI_F01_STATUS_BOOTLOADER(data->device_status);
+	if (driver_data->f01_bootloader_mode)
+		dev_warn(&rmi_dev->dev,
+			 "WARNING: RMI4 device is in bootloader mode!\n");
+
+
 	if (RMI_F01_STATUS_UNCONFIGURED(data->device_status)) {
-		dev_err(&fn->dev, "Device reset during configuration process, status: %#02x!\n",
-				RMI_F01_STATUS_CODE(data->device_status));
+		dev_err(&fn->dev,
+			"Device was reset during configuration process, status: %#02x!\n",
+			RMI_F01_STATUS_CODE(data->device_status));
 		error = -EINVAL;
 		goto error_exit;
 	}
 
-	driver_data->f01_bootloader_mode =
-		RMI_F01_STATUS_BOOTLOADER(data->device_status);
-	if (RMI_F01_STATUS_BOOTLOADER(data->device_status))
-		dev_warn(&rmi_dev->dev,
-			 "WARNING: RMI4 device is in bootloader mode!\n");
-
-	return error;
+	return 0;
 
  error_exit:
 	kfree(data);
@@ -471,35 +443,36 @@ static int rmi_f01_config(struct rmi_function *fn)
 	int retval;
 
 	retval = rmi_write_block(fn->rmi_dev, fn->fd.control_base_addr,
-			&data->device_control.ctrl0,
-			sizeof(data->device_control.ctrl0));
+				 &data->device_control.ctrl0,
+				 sizeof(data->device_control.ctrl0));
 	if (retval < 0) {
 		dev_err(&fn->dev, "Failed to write device_control.reg.\n");
 		return retval;
 	}
 
 	retval = rmi_write_block(fn->rmi_dev, data->interrupt_enable_addr,
-			data->device_control.interrupt_enable,
-			sizeof(u8)*(data->num_of_irq_regs));
+				 data->device_control.interrupt_enable,
+				 sizeof(u8) * data->num_of_irq_regs);
 
 	if (retval < 0) {
 		dev_err(&fn->dev, "Failed to write interrupt enable.\n");
 		return retval;
 	}
-
-	if (data->properties.has_adjustable_doze) {
-		retval = rmi_write_block(fn->rmi_dev,
-					data->doze_interval_addr,
-					&data->device_control.doze_interval,
-					sizeof(u8));
+	if (data->properties.has_lts) {
+		retval = rmi_write_block(fn->rmi_dev, data->doze_interval_addr,
+					 &data->device_control.doze_interval,
+					 sizeof(u8));
 		if (retval < 0) {
 			dev_err(&fn->dev, "Failed to write doze interval.\n");
 			return retval;
 		}
-		retval = rmi_write_block(
-				fn->rmi_dev, data->wakeup_threshold_addr,
-				&data->device_control.wakeup_threshold,
-				sizeof(u8));
+	}
+
+	if (data->properties.has_adjustable_doze) {
+		retval = rmi_write_block(fn->rmi_dev,
+					 data->wakeup_threshold_addr,
+					 &data->device_control.wakeup_threshold,
+					 sizeof(u8));
 		if (retval < 0) {
 			dev_err(&fn->dev, "Failed to write wakeup threshold.\n");
 			return retval;
@@ -507,10 +480,9 @@ static int rmi_f01_config(struct rmi_function *fn)
 	}
 
 	if (data->properties.has_adjustable_doze_holdoff) {
-		retval = rmi_write_block(fn->rmi_dev,
-					data->doze_holdoff_addr,
-					&data->device_control.doze_holdoff,
-					sizeof(u8));
+		retval = rmi_write_block(fn->rmi_dev, data->doze_holdoff_addr,
+					 &data->device_control.doze_holdoff,
+					 sizeof(u8));
 		if (retval < 0) {
 			dev_err(&fn->dev, "Failed to write doze holdoff.\n");
 			return retval;
@@ -525,17 +497,20 @@ static int rmi_f01_probe(struct rmi_function *fn)
 			dev_get_drvdata(&fn->rmi_dev->dev);
 	int error;
 
-	dev_dbg(&fn->dev, "%s called.\n", __func__);
-
 	error = rmi_f01_alloc_memory(fn, driver_data->num_of_irq_regs);
-	if (error < 0)
+	if (error)
 		return error;
 
 	error = rmi_f01_initialize(fn);
-	if (error < 0)
+	if (error)
 		return error;
 
 	return 0;
+}
+
+static void rmi_f01_remove(struct rmi_function *fn)
+{
+	/* Placeholder for now. */
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -544,29 +519,25 @@ static int rmi_f01_suspend(struct device *dev)
 	struct rmi_function *fn = to_rmi_function(dev);
 	struct rmi_device *rmi_dev = fn->rmi_dev;
 	struct f01_data *data = fn->data;
-	int error = 0;
-	
-	if (rmi_dev->supports_device_wakeup) {
-		dev_dbg(&fn->dev, "%s: No suspend action.\n", __func__);
-		return 0;
-	}
+	int error;
 
 	data->old_nosleep = data->device_control.ctrl0 &
-		RMI_F01_CRTL0_NOSLEEP_BIT;
+					RMI_F01_CRTL0_NOSLEEP_BIT;
 	data->device_control.ctrl0 &= ~RMI_F01_CRTL0_NOSLEEP_BIT;
 
 	data->device_control.ctrl0 &= ~RMI_F01_CTRL0_SLEEP_MODE_MASK;
 	data->device_control.ctrl0 |= RMI_SLEEP_MODE_SENSOR_SLEEP;
 
 	error = rmi_write_block(rmi_dev,
-			fn->fd.control_base_addr,
-			 &data->device_control.ctrl0,
-			 sizeof(data->device_control.ctrl0));
+				fn->fd.control_base_addr,
+				&data->device_control.ctrl0,
+				sizeof(data->device_control.ctrl0));
 	if (error < 0) {
 		dev_err(&fn->dev, "Failed to write sleep mode. Code: %d.\n",
 			error);
 		if (data->old_nosleep)
-			data->device_control.ctrl0 |= RMI_F01_CRTL0_NOSLEEP_BIT;
+			data->device_control.ctrl0 |=
+					RMI_F01_CRTL0_NOSLEEP_BIT;
 		data->device_control.ctrl0 &= ~RMI_F01_CTRL0_SLEEP_MODE_MASK;
 		data->device_control.ctrl0 |= RMI_SLEEP_MODE_NORMAL;
 		return error;
@@ -581,11 +552,6 @@ static int rmi_f01_resume(struct device *dev)
 	struct rmi_device *rmi_dev = fn->rmi_dev;
 	struct f01_data *data = fn->data;
 	int error;
-	
-	if (rmi_dev->supports_device_wakeup) {
-		dev_dbg(&fn->dev, "%s: No resume action.\n", __func__);
-		return 0;
-	}
 
 	if (data->old_nosleep)
 		data->device_control.ctrl0 |= RMI_F01_CRTL0_NOSLEEP_BIT;
@@ -595,7 +561,7 @@ static int rmi_f01_resume(struct device *dev)
 
 	error = rmi_write_block(rmi_dev, fn->fd.control_base_addr,
 				&data->device_control.ctrl0,
-			 sizeof(data->device_control.ctrl0));
+				sizeof(data->device_control.ctrl0));
 	if (error < 0) {
 		dev_err(&fn->dev,
 			"Failed to restore normal operation. Code: %d.\n",
@@ -610,7 +576,7 @@ static int rmi_f01_resume(struct device *dev)
 static SIMPLE_DEV_PM_OPS(rmi_f01_pm_ops, rmi_f01_suspend, rmi_f01_resume);
 
 static int rmi_f01_attention(struct rmi_function *fn,
-						unsigned long *irq_bits)
+			     unsigned long *irq_bits)
 {
 	struct rmi_device *rmi_dev = fn->rmi_dev;
 	struct f01_data *data = fn->data;
@@ -623,6 +589,7 @@ static int rmi_f01_attention(struct rmi_function *fn,
 			retval);
 		return retval;
 	}
+
 	if (RMI_F01_STATUS_UNCONFIGURED(data->device_status)) {
 		dev_warn(&fn->dev, "Device reset detected.\n");
 		retval = rmi_dev->driver->reset_handler(rmi_dev);
@@ -632,18 +599,29 @@ static int rmi_f01_attention(struct rmi_function *fn,
 	return 0;
 }
 
-struct rmi_function_driver rmi_f01_driver = {
+static struct rmi_function_handler rmi_f01_handler = {
 	.driver = {
-		.name = "rmi_f01",
+		.name	= "rmi_f01",
 		.pm	= &rmi_f01_pm_ops,
 		/*
-		 * Do not allow user unbinding of F01 as it is a critical
+		 * Do not allow user unbinding F01 as it is critical
 		 * function.
 		 */
 		.suppress_bind_attrs = true,
 	},
-	.func      = FUNCTION_NUMBER,
-	.probe     = rmi_f01_probe,
-	.config    = rmi_f01_config,
-	.attention = rmi_f01_attention,
+	.func		= 0x01,
+	.probe		= rmi_f01_probe,
+	.remove		= rmi_f01_remove,
+	.config		= rmi_f01_config,
+	.attention	= rmi_f01_attention,
 };
+
+int __init rmi_register_f01_handler(void)
+{
+	return rmi_register_function_handler(&rmi_f01_handler);
+}
+
+void rmi_unregister_f01_handler(void)
+{
+	rmi_unregister_function_handler(&rmi_f01_handler);
+}

@@ -22,10 +22,15 @@
 
 #define RMI_PRODUCT_ID_LENGTH    10
 
+#define PRODUCT_ID_OFFSET 0x10
+#define PRODUCT_INFO_OFFSET 0x1E
+
+
 #define RMI_DATE_CODE_LENGTH      3
 
 /* Force a firmware reset of the sensor */
 #define RMI_F01_CMD_DEVICE_RESET	1
+#define RMI_F01_DEFAULT_RESET_DELAY_MS	100
 
 #define F01_SERIALIZATION_SIZE 7
 
@@ -145,6 +150,12 @@ struct f01_basic_properties {
 	char fw_revision[RMI_FW_REVISION_LENGTH + 1];
 };
 
+
+/** Read the F01 query registers and populate the basic_properties structure.
+ * @rmi_dev - the device to be queries.
+ * @query_base_addr - address of the start of the query registers.
+ * @props - pointer to the structure to be filled in.
+ */
 int rmi_f01_read_properties(struct rmi_device *rmi_dev, u16 query_base_addr,
 			    struct f01_basic_properties *props);
 
@@ -236,36 +247,6 @@ struct f01_device_control {
 	u8 doze_interval;
 	u8 wakeup_threshold;
 	u8 doze_holdoff;
-};
-
-
-/*
- *
- * @serialization - 7 bytes of device serialization data.  The meaning of
- * these bytes varies from product to product, consult your product spec sheet.
- */
-struct f01_data {
-	struct f01_device_control device_control;
-	struct mutex control_mutex;
-
-	u8 device_status;
-
-	struct f01_basic_properties properties;
-	u8 serialization[F01_SERIALIZATION_SIZE];
-
-
-	u16 interrupt_enable_addr;
-	u16 doze_interval_addr;
-	u16 wakeup_threshold_addr;
-	u16 doze_holdoff_addr;
-
-	int irq_count;
-	int num_of_irq_regs;
-
-#ifdef	CONFIG_PM
-	bool suspended;
-	bool old_nosleep;
-#endif
 };
 
 #endif

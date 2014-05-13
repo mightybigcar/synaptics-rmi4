@@ -6,9 +6,6 @@
  * the Free Software Foundation.
  */
 
-#define FUNCTION_DATA f1a_data
-#define FNUM 1a
-
 #include <linux/kernel.h>
 #include <linux/rmi.h>
 #include <linux/input.h>
@@ -33,7 +30,6 @@
 #define STRONGEST_BUTTON_HYSTERESIS_MAX		255
 #define FILTER_STRENGTH_MIN			0
 #define FILTER_STRENGTH_MAX			255
-#define FUNCTION_NUMBER				0x1a
 
 union f1a_0d_query {
 	struct {
@@ -162,43 +158,6 @@ struct f1a_data {
 	struct mutex control_mutex;
 	struct mutex data_mutex;
 };
-
-/* Query sysfs files */
-show_union_struct_prototype(max_button_count)
-show_union_struct_prototype(has_general_control)
-show_union_struct_prototype(has_interrupt_enable)
-show_union_struct_prototype(has_multibutton_select)
-show_union_struct_prototype(has_tx_rx_map)
-show_union_struct_prototype(has_perbutton_threshold)
-show_union_struct_prototype(has_release_threshold)
-show_union_struct_prototype(has_strongestbtn_hysteresis)
-show_union_struct_prototype(has_filter_strength)
-
-static struct attribute *attrs[] = {
-	attrify(max_button_count),
-	attrify(has_general_control),
-	attrify(has_interrupt_enable),
-	attrify(has_multibutton_select),
-	attrify(has_tx_rx_map),
-	attrify(has_perbutton_threshold),
-	attrify(has_release_threshold),
-	attrify(has_strongestbtn_hysteresis),
-	attrify(has_filter_strength),
-	NULL
-};
-
-static struct attribute_group attrs_query = GROUP(attrs);
-
-/* Control sysfs files */
-show_store_union_struct_prototype(multibutton_report)
-show_store_union_struct_prototype(filter_mode)
-show_store_union_struct_prototype(interrupt_enabled_button)
-show_store_union_struct_prototype(multi_button)
-show_union_struct_prototype(tx_rx_map)
-show_store_union_struct_prototype(threshold_button)
-show_store_union_struct_prototype(button_release_threshold)
-show_store_union_struct_prototype(strongest_button_hysteresis)
-show_store_union_struct_prototype(filter_strength)
 
 static int rmi_f1a_read_control_parameters(struct rmi_device *rmi_dev,
 	struct f1a_data *f1a)
@@ -463,41 +422,7 @@ static int rmi_f1a_alloc_memory(struct rmi_function *fn)
 
 static void rmi_f1a_free_memory(struct rmi_function *fn)
 {
-	union f1a_0d_query *query;
-	struct f1a_data *f1a = fn->data;
-
-	query = &f1a->query;
-	sysfs_remove_group(&fn->dev.kobj, &attrs_query);
-
-	if (query->has_general_control) {
-		sysfs_remove_file(&fn->dev.kobj,
-				  attrify(multibutton_report));
-		sysfs_remove_file(&fn->dev.kobj, attrify(filter_mode));
-	}
-
-	if (query->has_interrupt_enable)
-		sysfs_remove_file(&fn->dev.kobj,
-			attrify(interrupt_enabled_button));
-
-	if (query->has_multibutton_select)
-		sysfs_remove_file(&fn->dev.kobj, attrify(multi_button));
-
-	if (query->has_tx_rx_map)
-		sysfs_remove_file(&fn->dev.kobj, attrify(tx_rx_map));
-
-	if (query->has_perbutton_threshold)
-		sysfs_remove_file(&fn->dev.kobj, attrify(threshold_button));
-
-	if (query->has_release_threshold)
-		sysfs_remove_file(&fn->dev.kobj,
-				attrify(button_release_threshold));
-
-	if (query->has_strongestbtn_hysteresis)
-		sysfs_remove_file(&fn->dev.kobj,
-				attrify(strongest_button_hysteresis));
-
-	if (query->has_filter_strength)
-		sysfs_remove_file(&fn->dev.kobj, attrify(filter_strength));
+	// TODO: rewrite this.
 
 }
 
@@ -602,89 +527,6 @@ error_free_device:
 	input_free_device(input_dev);
 
 	return rc;
-}
-
-static int rmi_f1a_create_sysfs(struct rmi_function *fn)
-{
-	struct f1a_data *f19 = fn->data;
-	union f1a_0d_query *query = &f19->query;
-
-	dev_dbg(&fn->dev, "Creating sysfs files.\n");
-	/* Set up sysfs device attributes. */
-	if (sysfs_create_group(&fn->dev.kobj, &attrs_query) < 0) {
-		dev_err(&fn->dev, "Failed to create query sysfs files.");
-		return -ENODEV;
-	}
-
-	if (query->has_general_control) {
-		if (sysfs_create_file(&fn->dev.kobj,
-				attrify(multibutton_report)) < 0) {
-			dev_err(&fn->dev, "Failed to create control sysfs files.");
-			return -ENODEV;
-		}
-		if (sysfs_create_file(&fn->dev.kobj,
-				attrify(filter_mode)) < 0) {
-			dev_err(&fn->dev, "Failed to create control sysfs files.");
-			return -ENODEV;
-		}
-	}
-
-	if (query->has_interrupt_enable) {
-		if (sysfs_create_file(&fn->dev.kobj,
-				attrify(interrupt_enabled_button)) < 0) {
-			dev_err(&fn->dev, "Failed to create control sysfs files.");
-			return -ENODEV;
-		}
-	}
-
-	if (query->has_multibutton_select) {
-		if (sysfs_create_file(&fn->dev.kobj,
-				attrify(multi_button)) < 0) {
-			dev_err(&fn->dev, "Failed to create control sysfs files.");
-			return -ENODEV;
-		}
-	}
-
-	if (query->has_tx_rx_map) {
-		if (sysfs_create_file(&fn->dev.kobj,
-				attrify(tx_rx_map)) < 0) {
-			dev_err(&fn->dev, "Failed to create control sysfs files.");
-			return -ENODEV;
-		}
-	}
-
-	if (query->has_perbutton_threshold) {
-		if (sysfs_create_file(&fn->dev.kobj,
-				attrify(threshold_button)) < 0) {
-			dev_err(&fn->dev, "Failed to create control sysfs files.");
-			return -ENODEV;
-		}
-	}
-
-	if (query->has_release_threshold) {
-		if (sysfs_create_file(&fn->dev.kobj,
-				attrify(button_release_threshold)) < 0) {
-			dev_err(&fn->dev, "Failed to create control sysfs files.");
-			return -ENODEV;
-		}
-	}
-
-	if (query->has_strongestbtn_hysteresis) {
-		if (sysfs_create_file(&fn->dev.kobj,
-				attrify(strongest_button_hysteresis)) < 0) {
-			dev_err(&fn->dev, "Failed to create control sysfs files.");
-			return -ENODEV;
-		}
-	}
-
-	if (query->has_filter_strength) {
-		if (sysfs_create_file(&fn->dev.kobj,
-				attrify(filter_strength)) < 0) {
-			dev_err(&fn->dev, "Failed to create control sysfs files.");
-			return -ENODEV;
-		}
-	}
-	return 0;
 }
 
 static int rmi_f1a_config(struct rmi_function *fn)
@@ -797,10 +639,6 @@ static int rmi_f1a_probe(struct rmi_function *fn)
 	if (rc < 0)
 		goto err_free_data;
 
-	rc = rmi_f1a_create_sysfs(fn);
-	if (rc < 0)
-		goto err_free_data;
-
 	return 0;
 
 err_free_data:
@@ -809,14 +647,12 @@ err_free_data:
 	return rc;
 }
 
-static int rmi_f1a_remove(struct rmi_function *fn)
+static void rmi_f1a_remove(struct rmi_function *fn)
 {
 	struct f1a_data *f1a = fn->data;
 
 	input_unregister_device(f1a->input);
 	rmi_f1a_free_memory(fn);
-
-	return 0;
 }
 
 static int rmi_f1a_attention(struct rmi_function *fn,
@@ -863,88 +699,18 @@ static int rmi_f1a_attention(struct rmi_function *fn,
 	return 0;
 }
 
-static struct rmi_function_driver function_driver = {
+static struct rmi_function_handler f1a_function_handler = {
 	.driver = {
 		.name = "rmi_f1a",
 	},
-	.func = FUNCTION_NUMBER,
+	.func = 0x1A,
 	.probe = rmi_f1a_probe,
 	.remove = rmi_f1a_remove,
 	.config = rmi_f1a_config,
 	.attention = rmi_f1a_attention,
 };
 
-/* sysfs functions */
-/* Query */
-simple_show_union_struct_unsigned(query, max_button_count)
-simple_show_union_struct_unsigned(query, has_general_control)
-simple_show_union_struct_unsigned(query, has_interrupt_enable)
-simple_show_union_struct_unsigned(query, has_multibutton_select)
-simple_show_union_struct_unsigned(query, has_tx_rx_map)
-simple_show_union_struct_unsigned(query, has_perbutton_threshold)
-simple_show_union_struct_unsigned(query, has_release_threshold)
-simple_show_union_struct_unsigned(query, has_strongestbtn_hysteresis)
-simple_show_union_struct_unsigned(query, has_filter_strength)
-
-/* Control */
-show_store_union_struct_unsigned(control, reg_0, multibutton_report)
-show_store_union_struct_unsigned(control, reg_0, filter_mode)
-show_store_union_struct_unsigned(control, reg_6, button_release_threshold)
-show_store_union_struct_unsigned(control, reg_7, strongest_button_hysteresis)
-show_store_union_struct_unsigned(control, reg_8, filter_strength)
-
-/* repeated register functions */
-show_store_repeated_union_struct_unsigned(control, reg_1,
-						interrupt_enabled_button)
-show_store_repeated_union_struct_unsigned(control, reg_2, multi_button)
-show_store_repeated_union_struct_unsigned(control, reg_5, threshold_button)
-
-static ssize_t rmi_fn_1a_tx_rx_map_show(struct device *dev,
-				struct device_attribute *attr,
-				char *buf)
-{
-	struct rmi_function *fn;
-	struct FUNCTION_DATA *data;
-	struct f1a_0d_control *control;
-	int reg_length;
-	int result, size = 0;
-	char *temp;
-	int i;
-
-	fn = to_rmi_function(dev);
-	data = fn->data;
-	control = &data->control;
-	/* Read current regtype values */
-	reg_length = control->reg_3_4->length;
-	result = rmi_read_block(fn->rmi_dev, control->reg_3_4->address,
-			(u8 *)control->reg_3_4->regs,
-			reg_length * sizeof(u8));
-
-	if (result < 0) {
-		dev_dbg(dev, "%s : Could not read regtype at 0x%x\n Data may be outdated.",
-				__func__, control->reg_3_4->address);
-	}
-	temp = buf;
-	for (i = 0; i < reg_length/2; i++) {
-		result = snprintf(temp, PAGE_SIZE - size, "%u-%u ",
-				control->reg_3_4->regs[i].transmitterbtn,
-				control->reg_3_4->regs[i].receiverbtn);
-		if (result < 0) {
-			dev_err(dev, "%s : Could not write output.", __func__);
-			return result;
-		}
-		size += result;
-		temp += result;
-	}
-	result = snprintf(temp, PAGE_SIZE - size, "\n");
-	if (result < 0) {
-			dev_err(dev, "%s : Could not write output.", __func__);
-			return result;
-	}
-	return size + result;
-}
-
-module_rmi_function_driver(function_driver);
+module_rmi_driver(f1a_function_handler);
 
 MODULE_AUTHOR("Vivian Ly <vly@synaptics.com>");
 MODULE_DESCRIPTION("RMI F1a module");

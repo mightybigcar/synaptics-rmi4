@@ -7,6 +7,7 @@
  */
 
 #include <linux/delay.h>
+#include <linux/device.h>
 #include <linux/firmware.h>
 #include <linux/ihex.h>
 #include <linux/kernel.h>
@@ -58,31 +59,25 @@ static u32 extract_u32(const u8 *ptr)
 		(u32)ptr[3] * 0x1000000;
 }
 
-struct reflash_data {
+struct rmi_reflash_data {
 	struct rmi_device *rmi_dev;
-	struct pdt_entry *f01_pdt;
+	bool force;
+	ulong busy;
+	char *img_name;
+	char *name_buf;
+	size_t name_buf_len;
+	struct pdt_entry f01_pdt;
 	struct f01_basic_properties f01_props;
 	u8 device_status;
-	struct pdt_entry *f34_pdt;
+	struct pdt_entry f34_pdt;
 	u8 bootloader_id[2];
 	union f34_query_regs f34_queries;
 	union f34_control_status f34_controls;
 	const u8 *firmware_data;
 	const u8 *config_data;
+	struct work_struct reflash_work;
 };
 
-/* If this parameter is true, we will update the firmware regardless of
- * the versioning info.
- */
-static bool force = false;
-module_param(force, bool, S_IRUGO | S_IWUSR);
-MODULE_PARM_DESC(param, "Force reflash of RMI4 devices");
-
-/* If this parameter is not NULL, we'll use that name for the firmware image,
- * instead of getting it from the F01 queries.
- */
-static char *img_name;
-module_param(img_name, charp, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(param, "Name of the RMI4 firmware image");
 
 #define RMI4_IMAGE_FILE_REV1_OFFSET 30
@@ -108,56 +103,46 @@ static void extract_header(const u8 *data, int pos, struct image_header *header)
 	       RMI_PRODUCT_INFO_LENGTH);
 }
 
-static int rescan_pdt(struct reflash_data *data)
+static int rmi_find_functions(struct rmi_device *rmi_dev,
+		void *ctx, const struct pdt_entry *pdt)
 {
-	int retval;
-	bool f01_found;
-	bool f34_found;
-	struct pdt_entry pdt_entry;
-	int i;
-	struct rmi_device *rmi_dev = data->rmi_dev;
-	struct pdt_entry *f34_pdt = data->f34_pdt;
-	struct pdt_entry *f01_pdt = data->f01_pdt;
+ 	struct rmi_reflash_data *data = ctx;
 
-	/* Per spec, once we're in reflash we only need to look at the first
-	 * PDT page for potentially changed F01 and F34 information.
-	 */
-	for (i = PDT_START_SCAN_LOCATION; i >= PDT_END_SCAN_LOCATION;
-			i -= sizeof(pdt_entry)) {
-		retval = rmi_read_block(rmi_dev, i, (u8 *)&pdt_entry,
-					sizeof(pdt_entry));
-		if (retval != sizeof(pdt_entry)) {
-			dev_err(&rmi_dev->dev,
-				"Read PDT entry at %#06x failed: %d.\n",
-				i, retval);
-			return retval;
-		}
+	if (pdt->page_start > 0)
+		return RMI_SCAN_DONE;
 
-		if (RMI4_END_OF_PDT(pdt_entry.function_number))
-			break;
+	if (pdt->function_number == 0x01)
+		memcpy(&data->f01_pdt, pdt, sizeof(struct pdt_entry));
+	else if (pdt->function_number == 0x34)
+		memcpy(&data->f34_pdt, pdt, sizeof(struct pdt_entry));
 
-		if (pdt_entry.function_number == 0x01) {
-			memcpy(f01_pdt, &pdt_entry, sizeof(pdt_entry));
-			f01_found = true;
-		} else if (pdt_entry.function_number == 0x34) {
-			memcpy(f34_pdt, &pdt_entry, sizeof(pdt_entry));
-			f34_found = true;
-		}
-	}
-
-	if (!f01_found) {
-		dev_err(&rmi_dev->dev, "Failed to find F01 PDT entry.\n");
-		retval = -ENODEV;
-	} else if (!f34_found) {
-		dev_err(&rmi_dev->dev, "Failed to find F34 PDT entry.\n");
-		retval = -ENODEV;
-	} else
-		retval = 0;
-
-	return retval;
+	return RMI_SCAN_CONTINUE;
 }
 
-static int read_f34_controls(struct reflash_data *data)
+static int find_f01_and_f34(struct rmi_reflash_data* data)
+{
+	struct rmi_device *rmi_dev = data->rmi_dev;
+	int retval;
+
+	data->f01_pdt.function_number = data->f34_pdt.function_number = 0;
+	retval = rmi_scan_pdt(rmi_dev, data, rmi_find_functions);
+	if (retval < 0)
+		return retval;
+
+	if (!data->f01_pdt.function_number) {
+		dev_err(&rmi_dev->dev, "Failed to find F01 for reflash.\n");
+		return -ENODEV;
+	}
+
+	if (!data->f34_pdt.function_number) {
+		dev_err(&rmi_dev->dev, "Failed to find F34 for reflash.\n");
+		return -ENODEV;
+	}
+
+	return 0;
+}
+
+static int read_f34_controls(struct rmi_reflash_data *data)
 {
 	int retval;
 
@@ -169,11 +154,11 @@ static int read_f34_controls(struct reflash_data *data)
 	return 0;
 }
 
-static int read_f01_status(struct reflash_data *data)
+static int read_f01_status(struct rmi_reflash_data *data)
 {
 	int retval;
 
-	retval = rmi_read(data->rmi_dev, data->f01_pdt->data_base_addr,
+	retval = rmi_read(data->rmi_dev, data->f01_pdt.data_base_addr,
 			  &data->device_status);
 	if (retval < 0)
 		return retval;
@@ -185,7 +170,7 @@ static int read_f01_status(struct reflash_data *data)
 #define MAX_SLEEP_TIME_US 100
 
 /* Wait until the status is idle and we're ready to continue */
-static int wait_for_idle(struct reflash_data *data, int timeout_ms)
+static int wait_for_idle(struct rmi_reflash_data *data, int timeout_ms)
 {
 	int timeout_count = ((timeout_ms * 1000) / MAX_SLEEP_TIME_US) + 1;
 	int count = 0;
@@ -224,12 +209,12 @@ static int wait_for_idle(struct reflash_data *data, int timeout_ms)
 	return -ETIMEDOUT;
 }
 
-static int read_f34_queries(struct reflash_data *data)
+static int read_f34_queries(struct rmi_reflash_data *data)
 {
 	int retval;
 	u8 id_str[3];
 
-	retval = rmi_read_block(data->rmi_dev, data->f34_pdt->query_base_addr,
+	retval = rmi_read_block(data->rmi_dev, data->f34_pdt.query_base_addr,
 				data->bootloader_id, 2);
 	if (retval < 0) {
 		dev_err(&data->rmi_dev->dev,
@@ -237,7 +222,7 @@ static int read_f34_queries(struct reflash_data *data)
 			retval);
 		return retval;
 	}
-	retval = rmi_read_block(data->rmi_dev, data->f34_pdt->query_base_addr+2,
+	retval = rmi_read_block(data->rmi_dev, data->f34_pdt.query_base_addr+2,
 			data->f34_queries.regs,
 			ARRAY_SIZE(data->f34_queries.regs));
 	if (retval < 0) {
@@ -270,20 +255,19 @@ static int read_f34_queries(struct reflash_data *data)
 	dev_dbg(&data->rmi_dev->dev, "F34 config blocks: %d\n",
 		data->f34_queries.config_block_count);
 
-	data->f34_controls.address = data->f34_pdt->data_base_addr +
+	data->f34_controls.address = data->f34_pdt.data_base_addr +
 			F34_BLOCK_DATA_OFFSET + data->f34_queries.block_size;
 
 	return 0;
 }
 
-static int write_bootloader_id(struct reflash_data *data)
+static int write_bootloader_id(struct rmi_reflash_data *data)
 {
 	int retval;
 	struct rmi_device *rmi_dev = data->rmi_dev;
-	struct pdt_entry *f34_pdt = data->f34_pdt;
 
 	retval = rmi_write_block(rmi_dev,
-			f34_pdt->data_base_addr + F34_BLOCK_DATA_OFFSET,
+			data->f34_pdt.data_base_addr + F34_BLOCK_DATA_OFFSET,
 			data->bootloader_id, ARRAY_SIZE(data->bootloader_id));
 	if (retval < 0) {
 		dev_err(&rmi_dev->dev,
@@ -294,7 +278,7 @@ static int write_bootloader_id(struct reflash_data *data)
 	return 0;
 }
 
-static int write_f34_command(struct reflash_data *data, u8 command)
+static int write_f34_command(struct rmi_reflash_data *data, u8 command)
 {
 	int retval;
 	struct rmi_device *rmi_dev = data->rmi_dev;
@@ -310,7 +294,7 @@ static int write_f34_command(struct reflash_data *data, u8 command)
 	return 0;
 }
 
-static int enter_flash_programming(struct reflash_data *data)
+static int enter_flash_programming(struct rmi_reflash_data *data)
 {
 	int retval;
 	struct rmi_device *rmi_dev = data->rmi_dev;
@@ -338,7 +322,7 @@ static int enter_flash_programming(struct reflash_data *data)
 	}
 	dev_dbg(&rmi_dev->dev, "HOORAY! Programming is enabled!\n");
 
-	retval = rescan_pdt(data);
+	retval = find_f01_and_f34(data);
 	if (retval) {
 		dev_err(&rmi_dev->dev, "Failed to rescan pdt.  Code: %d.\n",
 			retval);
@@ -363,7 +347,7 @@ static int enter_flash_programming(struct reflash_data *data)
 		return retval;
 	}
 
-	retval = rmi_read(rmi_dev, data->f01_pdt->control_base_addr,
+	retval = rmi_read(rmi_dev, data->f01_pdt.control_base_addr,
 			  &f01_control_0);
 	if (retval < 0) {
 		dev_err(&rmi_dev->dev, "F01_CTRL_0 read failed, code = %d.\n",
@@ -373,7 +357,7 @@ static int enter_flash_programming(struct reflash_data *data)
 	f01_control_0 |= RMI_F01_CRTL0_NOSLEEP_BIT;
 	f01_control_0 = (f01_control_0 & ~0x03) | RMI_SLEEP_MODE_NORMAL;
 
-	retval = rmi_write(rmi_dev, data->f01_pdt->control_base_addr,
+	retval = rmi_write(rmi_dev, data->f01_pdt.control_base_addr,
 			   f01_control_0);
 	if (retval < 0) {
 		dev_err(&rmi_dev->dev, "F01_CTRL_0 write failed, code = %d.\n",
@@ -384,35 +368,35 @@ static int enter_flash_programming(struct reflash_data *data)
 	return 0;
 }
 
-static void reset_device(struct reflash_data *data)
+static void reset_device(struct rmi_reflash_data *data)
 {
 	int retval;
 	struct rmi_device_platform_data *pdata =
 		to_rmi_platform_data(data->rmi_dev);
 
 	dev_dbg(&data->rmi_dev->dev, "Resetting...\n");
-	retval = rmi_write(data->rmi_dev, data->f01_pdt->command_base_addr,
+	retval = rmi_write(data->rmi_dev, data->f01_pdt.command_base_addr,
 			   RMI_F01_CMD_DEVICE_RESET);
 	if (retval < 0)
 		dev_warn(&data->rmi_dev->dev,
 			 "WARNING - post-flash reset failed, code: %d.\n",
 			 retval);
-	msleep(pdata->reset_delay_ms);
+	msleep(pdata->reset_delay_ms ?: RMI_F01_DEFAULT_RESET_DELAY_MS);
 	dev_dbg(&data->rmi_dev->dev, "Reset completed.\n");
 }
 
 /*
  * Send data to the device one block at a time.
  */
-static int write_blocks(struct reflash_data *data, u8 *block_ptr,
+static int write_blocks(struct rmi_reflash_data *data, u8 *block_ptr,
 			u16 block_count, u8 cmd)
 {
 	int block_num;
 	u8 zeros[] = {0, 0};
 	int retval;
-	u16 addr = data->f34_pdt->data_base_addr + F34_BLOCK_DATA_OFFSET;
+	u16 addr = data->f34_pdt.data_base_addr + F34_BLOCK_DATA_OFFSET;
 
-	retval = rmi_write_block(data->rmi_dev, data->f34_pdt->data_base_addr,
+	retval = rmi_write_block(data->rmi_dev, data->f34_pdt.data_base_addr,
 				 zeros, ARRAY_SIZE(zeros));
 	if (retval < 0) {
 		dev_err(&data->rmi_dev->dev, "Failed to write initial zeros. Code=%d.\n",
@@ -450,19 +434,19 @@ static int write_blocks(struct reflash_data *data, u8 *block_ptr,
 	return 0;
 }
 
-static int write_firmware(struct reflash_data *data)
+static int write_firmware(struct rmi_reflash_data *data)
 {
 	return write_blocks(data, (u8 *) data->firmware_data,
 		data->f34_queries.fw_block_count, F34_WRITE_FW_BLOCK);
 }
 
-static int write_configuration(struct reflash_data *data)
+static int write_configuration(struct rmi_reflash_data *data)
 {
 	return write_blocks(data, (u8 *) data->config_data,
 		data->f34_queries.config_block_count, F34_WRITE_CONFIG_BLOCK);
 }
 
-static void reflash_firmware(struct reflash_data *data)
+static void reflash_firmware(struct rmi_reflash_data *data)
 {
 	struct timespec start;
 	struct timespec end;
@@ -536,11 +520,11 @@ static void reflash_firmware(struct reflash_data *data)
 
 /* Returns false if the firmware should not be reflashed.
  */
-static bool go_nogo(struct reflash_data *data, struct image_header *header)
+static bool go_nogo(struct rmi_reflash_data *data, struct image_header *header)
 {
-	int retval;
+// 	int retval;
 
-	if (force) {
+	if (data->force) {
 		dev_dbg(&data->rmi_dev->dev, "Reflash force flag in effect.\n");
 		return true;
 	}
@@ -561,20 +545,21 @@ static bool go_nogo(struct reflash_data *data, struct image_header *header)
 			dev_dbg(&data->rmi_dev->dev, "Image file has lower Packrat ID than device.\n");
 	}
 
-	retval = read_f01_status(data);
-	if (retval)
-		dev_err(&data->rmi_dev->dev,
-			"Failed to read F01 status. Code: %d.\n", retval);
-
-	dev_dbg(&data->rmi_dev->dev, "Flash prog bit at go/nogo: %d\n",
-			RMI_F01_STATUS_BOOTLOADER(data->device_status));
-	return RMI_F01_STATUS_BOOTLOADER(data->device_status);
+// 	retval = read_f01_status(data);
+// 	if (retval)
+// 		dev_err(&data->rmi_dev->dev,
+// 			"Failed to read F01 status. Code: %d.\n", retval);
+//
+// 	dev_dbg(&data->rmi_dev->dev, "Flash prog bit at go/nogo: %d\n",
+// 			RMI_F01_STATUS_BOOTLOADER(data->device_status));
+// 	return RMI_F01_STATUS_BOOTLOADER(data->device_status);
+	return false;
 }
 
-#define NAME_BUFFER_SIZE (RMI_PRODUCT_ID_LENGTH+12)
+#define NAME_BUFFER_SIZE 64
+#define FW_NAME_FORMAT "%s.img"
 
-void rmi4_fw_update(struct rmi_device *rmi_dev,
-		struct pdt_entry *f01_pdt, struct pdt_entry *f34_pdt)
+static void rmi4_fw_update(struct rmi_device *rmi_dev)
 {
 	struct timespec start;
 	struct timespec end;
@@ -583,13 +568,15 @@ void rmi4_fw_update(struct rmi_device *rmi_dev,
 	const struct firmware *fw_entry = NULL;
 	int retval;
 	struct image_header *header = NULL;
-	struct pdt_properties pdt_props;
-	struct reflash_data *data = NULL;
+	u8 pdt_props;
+	struct rmi_driver_data *drv_data = dev_get_drvdata(&rmi_dev->dev);
+	struct rmi_reflash_data* data = drv_data->reflash_data;
 	struct rmi_device_platform_data *pdata = to_rmi_platform_data(rmi_dev);
-	
+
 	dev_dbg(&rmi_dev->dev, "%s called.\n", __func__);
-	dev_dbg(&rmi_dev->dev, "rmi_core.force: %d\n", force);
-	dev_dbg(&rmi_dev->dev, "rmi_core.img_name: %s\n", img_name ? img_name : "*null*");
+	dev_dbg(&rmi_dev->dev, "force: %d\n", data->force);
+	dev_dbg(&rmi_dev->dev, "img_name: %s\n", data->img_name);
+	dev_dbg(&rmi_dev->dev, "firmware_name: %s\n", pdata->firmware_name);
 
 	getnstimeofday(&start);
 
@@ -603,14 +590,6 @@ void rmi4_fw_update(struct rmi_device *rmi_dev,
 		dev_err(&rmi_dev->dev, "Failed to allocate header.\n");
 		goto done;
 	}
-	data = kzalloc(sizeof(struct reflash_data), GFP_KERNEL);
-	if (!data) {
-		dev_err(&rmi_dev->dev, "Failed to allocate data.\n");
-		goto done;
-	}
-	data->f01_pdt = f01_pdt;
-	data->f34_pdt = f34_pdt;
-	data->rmi_dev = rmi_dev;
 
 	retval = rmi_read(rmi_dev, PDT_PROPERTIES_LOCATION, &pdt_props);
 	if (retval < 0) {
@@ -618,13 +597,14 @@ void rmi4_fw_update(struct rmi_device *rmi_dev,
 			 "Failed to read PDT props at %#06x (code %d). Assuming 0x00.\n",
 			 PDT_PROPERTIES_LOCATION, retval);
 	}
-	if (pdt_props.has_bsr) {
+	if (pdt_props & RMI_PDT_PROPS_HAS_BSR) {
 		dev_warn(&rmi_dev->dev,
 			 "Firmware update for LTS not currently supported.\n");
 		goto done;
 	}
 
-	retval = rmi_f01_read_properties(rmi_dev, data->f01_pdt->query_base_addr, &data->f01_props);
+	retval = rmi_f01_read_properties(rmi_dev, data->f01_pdt.query_base_addr,
+					 &data->f01_props);
 	if (retval) {
 		dev_err(&rmi_dev->dev, "F01 queries failed, code = %d.\n",
 			retval);
@@ -636,18 +616,21 @@ void rmi4_fw_update(struct rmi_device *rmi_dev,
 			retval);
 		goto done;
 	}
-	if (img_name && strlen(img_name))
-		snprintf(firmware_name, NAME_BUFFER_SIZE, "rmi4/%s.img",
-			img_name);
-	else if (pdata->firmware_name && strlen(pdata->firmware_name))
-		snprintf(firmware_name, NAME_BUFFER_SIZE, "rmi4/%s.img",
+	if (data->img_name && strlen(data->img_name)) {
+		dev_dbg(&rmi_dev->dev, "Using sysfs firmware name: %s\n", data->img_name);
+		snprintf(firmware_name, NAME_BUFFER_SIZE, FW_NAME_FORMAT,
+			data->img_name);
+	} else if (pdata->firmware_name && strlen(pdata->firmware_name)) {
+		dev_dbg(&rmi_dev->dev, "Using platform data firmware name: %s\n", pdata->firmware_name);
+		snprintf(firmware_name, NAME_BUFFER_SIZE, FW_NAME_FORMAT,
 			pdata->firmware_name);
-	else {
+	} else {
 		if (!strlen(data->f01_props.product_id)) {
 			dev_err(&rmi_dev->dev, "Product ID is missing or empty - will not reflash.\n");
 			goto done;
 		}
-		snprintf(firmware_name, NAME_BUFFER_SIZE, "rmi4/%s.img",
+		dev_dbg(&rmi_dev->dev, "Using F01 product ID: %s.\n", data->f01_props.product_id);
+		snprintf(firmware_name, NAME_BUFFER_SIZE, FW_NAME_FORMAT,
 			data->f01_props.product_id);
 	}
 	dev_info(&rmi_dev->dev, "Requesting %s.\n", firmware_name);
@@ -662,6 +645,8 @@ void rmi4_fw_update(struct rmi_device *rmi_dev,
 	extract_header(fw_entry->data, 0, header);
 	dev_dbg(&rmi_dev->dev, "Img checksum:           %#08X\n",
 		header->checksum);
+	dev_dbg(&rmi_dev->dev, "Img io:                 %#04X\n",
+		header->io);
 	dev_dbg(&rmi_dev->dev, "Img image size:         %d\n",
 		header->image_size);
 	dev_dbg(&rmi_dev->dev, "Img config size:        %d\n",
@@ -672,7 +657,6 @@ void rmi4_fw_update(struct rmi_device *rmi_dev,
 		header->product_id);
 	dev_dbg(&rmi_dev->dev, "Img product info:       %#04x %#04x\n",
 		header->product_info[0], header->product_info[1]);
-	dev_dbg(&rmi_dev->dev, "Img IO:                 %d\n", header->io);
 	if (header->io == 1) {
 		dev_dbg(&rmi_dev->dev, "Img Packrat:            %d\n",
 			header->fw_build_id);
@@ -706,4 +690,208 @@ done:
 	kfree(firmware_name);
 	kfree(header);
 	return;
+}
+
+/*
+ * We also reflash the device if (a) in kernel reflashing is
+ * enabled, and (b) the reflash module decides it requires reflashing.
+ *
+ * We have to do this before actually building the PDT because the reflash
+ * might cause various registers to move around.
+ */
+static int rmi_device_reflash(struct rmi_device *rmi_dev)
+{
+	struct device *dev = &rmi_dev->dev;
+	struct rmi_driver_data *drv_data = dev_get_drvdata(dev);
+	struct rmi_reflash_data* data = drv_data->reflash_data;
+	int retval;
+
+	retval = find_f01_and_f34(data);
+	if (retval < 0)
+		return retval;
+
+	rmi4_fw_update(rmi_dev);
+
+	clear_bit(0, &data->busy);
+
+	return 0;
+}
+
+static ssize_t rmi_driver_img_name_show(struct device *dev,
+				   struct device_attribute *attr, char *buf)
+{
+	struct rmi_device *rmi_dev = to_rmi_device(dev);
+	struct rmi_driver_data *drv_data = dev_get_drvdata(&rmi_dev->dev);
+	struct rmi_reflash_data* data = drv_data->reflash_data;
+
+	return snprintf(buf, PAGE_SIZE, "%s\n", data->img_name);
+}
+
+static ssize_t rmi_driver_img_name_store(struct device *dev,
+				    struct device_attribute *attr,
+				    const char *buf, size_t count)
+{
+	struct rmi_device *rmi_dev = to_rmi_device(dev);
+	struct rmi_driver_data *drv_data = dev_get_drvdata(&rmi_dev->dev);
+	struct rmi_reflash_data* data = drv_data->reflash_data;
+
+	if (data->name_buf_len < count) {
+		kfree(data->name_buf);
+		data->name_buf = kzalloc(count, GFP_KERNEL);
+		data->name_buf_len = count;
+	}
+
+	if (!count) {
+		data->img_name = NULL;
+		return count;
+	}
+
+	strncpy(data->name_buf, buf, count);
+	data->img_name = strstrip(data->name_buf);
+
+	return count;
+}
+
+static ssize_t rmi_driver_force_show(struct device *dev,
+				   struct device_attribute *attr, char *buf)
+{
+	struct rmi_device *rmi_dev = to_rmi_device(dev);
+	struct rmi_driver_data *drv_data = dev_get_drvdata(&rmi_dev->dev);
+	struct rmi_reflash_data* data = drv_data->reflash_data;
+
+	return snprintf(buf, PAGE_SIZE, "%u\n", data->force);
+}
+
+static ssize_t rmi_driver_force_store(struct device *dev,
+				    struct device_attribute *attr,
+				    const char *buf, size_t count)
+{
+	struct rmi_device *rmi_dev = to_rmi_device(dev);
+	struct rmi_driver_data *drv_data = dev_get_drvdata(&rmi_dev->dev);
+	struct rmi_reflash_data* data = drv_data->reflash_data;
+	int retval;
+	unsigned long val;
+
+	if (test_and_set_bit(0, &data->busy))
+		return -EBUSY;
+
+	retval = kstrtoul(buf, 10, &val);
+	if (retval)
+		count = retval;
+	else
+		data->force = !!val;
+
+	clear_bit(0, &data->busy);
+
+	return count;
+}
+
+static ssize_t rmi_driver_reflash_show(struct device *dev,
+				   struct device_attribute *attr, char *buf)
+{
+	struct rmi_device *rmi_dev = to_rmi_device(dev);
+	struct rmi_driver_data *drv_data = dev_get_drvdata(&rmi_dev->dev);
+	struct rmi_reflash_data* data = drv_data->reflash_data;
+
+	return snprintf(buf, PAGE_SIZE, "%u\n", test_bit(0, &data->busy));
+}
+
+static ssize_t rmi_driver_reflash_store(struct device *dev,
+				    struct device_attribute *attr,
+				    const char *buf, size_t count)
+{
+	int retval;
+	unsigned long val;
+	struct rmi_device *rmi_dev = to_rmi_device(dev);
+	struct rmi_driver_data *drv_data = dev_get_drvdata(&rmi_dev->dev);
+	struct rmi_reflash_data* data = drv_data->reflash_data;
+
+	retval = kstrtoul(buf, 10, &val);
+	if (retval)
+		return retval;
+
+	if (test_and_set_bit(0, &data->busy))
+		return -EBUSY;
+
+	if (val)
+		/*
+		 * TODO: Here we start a work thread to go do the reflash, but
+		 * maybe we can just use request_firmware_timeout().
+		 */
+		schedule_work(&data->reflash_work);
+	else
+		clear_bit(0, &data->busy);
+
+	return count;
+}
+
+static void rmi_reflash_work(struct work_struct *work)
+{
+	struct rmi_reflash_data *data =
+		container_of(work, struct rmi_reflash_data, reflash_work);
+	struct rmi_device *rmi_dev = data->rmi_dev;
+	int error;
+
+	dev_dbg(&rmi_dev->dev, "%s runs.\n", __func__);
+	error = rmi_device_reflash(rmi_dev);
+	if (error < 0)
+		dev_err(&rmi_dev->dev, "Reflash attempt failed with code: %d.",
+			error);
+	clear_bit(0, &data->busy);
+}
+
+static DEVICE_ATTR(reflash_force,
+			(S_IRUGO | S_IWUGO),
+			rmi_driver_force_show, rmi_driver_force_store);
+static DEVICE_ATTR(reflash_name,
+			(S_IRUGO | S_IWUGO),
+			rmi_driver_img_name_show, rmi_driver_img_name_store);
+static DEVICE_ATTR(reflash,
+			(S_IRUGO | S_IWUGO),
+			rmi_driver_reflash_show, rmi_driver_reflash_store);
+
+static struct attribute *reflash_attrs[] = {
+	&dev_attr_reflash_force.attr,
+	&dev_attr_reflash_name.attr,
+	&dev_attr_reflash.attr,
+	NULL
+};
+
+static const struct attribute_group reflash_attributes = {
+	.attrs = reflash_attrs,
+};
+
+/**
+ * Initialize the reflash support structures for the specified device.
+ */
+void rmi_reflash_init(struct rmi_device* rmi_dev)
+{
+	int error;
+	struct rmi_driver_data *drv_data = dev_get_drvdata(&rmi_dev->dev);
+	struct rmi_reflash_data *data;
+
+	dev_dbg(&rmi_dev->dev, "%s called.\n", __func__);
+
+	data = devm_kzalloc(&rmi_dev->dev, sizeof(struct rmi_reflash_data), GFP_KERNEL);
+
+	error = sysfs_create_group(&rmi_dev->dev.kobj, &reflash_attributes);
+	if (error) {
+		dev_warn(&rmi_dev->dev, "Failed to create reflash sysfs attributes.\n");
+		return;
+	}
+
+	INIT_WORK(&data->reflash_work, rmi_reflash_work);
+	data->rmi_dev = rmi_dev;
+	drv_data->reflash_data = data;
+}
+
+/** Clean up the devices reflash support structures.
+ */
+void rmi_reflash_cleanup(struct rmi_device* rmi_dev)
+{
+	struct rmi_driver_data *drv_data = dev_get_drvdata(&rmi_dev->dev);
+	struct rmi_reflash_data *data = drv_data->reflash_data;
+
+	sysfs_remove_group(&rmi_dev->dev.kobj, &reflash_attributes);
+	devm_kfree(&rmi_dev->dev, data);
 }

@@ -7,6 +7,9 @@ config RMI4_CORE
 	  Say Y here if you want to support the Synaptics RMI4 bus.  This is
 	  required for all RMI4 device support.
 
+	  The RMI4 bus supports touch input devices such as touchscreens,
+	  touchpads, capacitive buttons, and so on.
+
 	  If unsure, say Y.
 
 config RMI4_CONTROL
@@ -15,12 +18,16 @@ config RMI4_CONTROL
 	help
 	  Say Y here to enable the sysfs control API in the RMI4 driver.
 
+	  This will provide a sysfs interface for common configuration and
+	  control options relating to RMI4 devices.
+
 	  If unsure, say N.
 
 config RMI4_DEBUG
 	bool "RMI4 Debugging"
 	depends on RMI4_CORE
 	select RMI4_CONTROL
+	select DYNAMIC_DEBUG
 	select DEBUG_FS
 	help
 	  Say Y here to enable debug feature in the RMI4 driver.
@@ -33,12 +40,13 @@ config RMI4_DEBUG
 	  If unsure, say N.
 
 config RMI4_FWLIB
-	bool "RMI4 device reflash"
+	bool "RMI4 Firmware Update"
 	depends on RMI4_CORE
 	help
-	  Say Y here to enable boot time reflash of RMI4 sensor firmware.
+	  Say Y here to enable in-kernel firmware update capability.
 
-	  If unsure, say N.
+	  The RMI4 core will check for firmware updates during the device
+	  initialization process, and apply the updates if appropriate.
 
 config RMI4_I2C
 	tristate "RMI4 I2C Support"
@@ -48,6 +56,59 @@ config RMI4_I2C
 	  bus.
 
 	  If unsure, say Y.
+
+
+config RMI4_SPI
+	tristate "RMI4 SPI Support"
+	depends on RMI4_CORE && SPI
+	help
+	  Say Y here if you want to support RMI4 devices connected to an SPI
+	  bus.
+
+	  If unsure, say Y.
+
+config RMI4_SMB
+	tristate "RMI4 SMB Support"
+	depends on RMI4_CORE
+	help
+	  Say Y here if you want to support RMI4 devices connected to an SMB
+	  bus.
+
+	  If unsure, say Y.
+
+config RMI4_F05
+	tristate "RMI4 Function 05 (image reporting for T1320)"
+	depends on RMI4_CORE
+	help
+	  Say Y here if you want to add support for RMI4 function 05.
+
+	  Function 05 provides image reporting functions that allow
+	  direct visibility into image sensing for touchscreens and touchpads.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called rmi-f05.
+
+config RMI4_F1A
+	tristate "RMI4 Function 1A (capacitive button sensor)"
+	depends on RMI4_CORE
+	help
+	  Say Y here if you want to add support for RMI4 function 1A.
+
+	  Function 1A provides self testing for touchscreens and touchpads.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called rmi-f1a.
+
+config RMI4_F09
+	tristate "RMI4 Function 09 (self testing)"
+	depends on RMI4_CORE
+	help
+	  Say Y here if you want to add support for RMI4 function 09.
+
+	  Function 09 provides self testing for touchscreens and touchpads.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called rmi-f09.
 
 config RMI4_F11
 	tristate "RMI4 Function 11 (2D pointing)"
@@ -61,28 +122,6 @@ config RMI4_F11
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called rmi-f11.
-
-config RMI4_F12
-	tristate "RMI4 Function 12 (2D pointing)"
-	depends on RMI4_CORE
-	help
-	  Say Y here if you want to add support for RMI4 function 12.
-
-	  Function 12 provides 2D multifinger pointing for touchscreens and
-	  touchpads.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called rmi-f12
-
-config RMI4_F1A
-	tristate "RMI4 Function 1A (cap buttons)"
-	depends on RMI4_CORE
-	help
-	  Add support for RMI Function 1A
-
-	  Function 1A provides capacitive button support.
-
-	  You can build this as a module.
 
 config RMI4_F11_PEN
 	bool "RMI4 F11 Pen Support"
@@ -99,13 +138,119 @@ config RMI4_F11_PEN
 	  sensor supports pen input, you probably want to turn this feature
 	  off.
 
-config RMI4_VIRTUAL_BUTTON
-	tristate "RMI4 Vitual Button"
-	depends on RMI4_F11
+config RMI4_F12
+	tristate "RMI4 Function 12 (2D pointing)"
+	depends on RMI4_CORE
 	help
-	  Say Y here if you want to add support for RMI4 virtual button to F11.
+	  Say Y here if you want to add support for RMI4 function 12.
 
-	  The virtual button feature implement the virtual button device in
+	  Function 12 is an alternate implementation of 2D multifinger
+	  pointing for touchscreens and touchpads. At this time the F12 is
+	  only supported by a few RMI4 devices.  NOTE: This implementation
+	  is experiemental!
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called rmi-f12.
+
+config RMI4_F17
+	tristate "RMI4 Function 17 (pointing sticks)"
+	depends on RMI4_CORE
+	help
+	  Say Y here if you want to add support for RMI4 function 17.
+
+	  Function 19 provides support for capacitive and resistive
+	  pointing sticks.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called rmi-f17.
+
+config RMI4_F19
+	tristate "RMI4 Function 19 (0D pointing)"
+	depends on RMI4_CORE
+	help
+	  Say Y here if you want to add support for RMI4 function 19.
+
+	  Function 19 provides support for capacitive buttons for sensors
+	  that implement capacitive buttons.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called rmi-f19.
+
+config RMI4_F21
+	tristate "RMI4 Function 21 (2D Force)"
+	depends on RMI4_CORE
+	help
+	  Say Y here if you want to add support for RMI4 function 21.
+
+	  Function 21 provides 2D Force Sensing for ForcePad products.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called rmi-f21.
+
+config RMI4_F30
+	tristate "RMI4 Function 30 (GPIO LED)"
+	depends on RMI4_CORE
+	help
+	  Say Y here if you want to add support for RMI4 function 30.
+
+	  Function 30 provides GPIO LED support for sensors.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called rmi-f30.
+
+config RMI4_F31
+	tristate "RMI4 Function 31 (LED)"
+	depends on RMI4_CORE
+	help
+	  Say Y here if you want to add support for RMI4 function 31.
+
+	  Function 31 provides LED support for sensors.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called rmi-f31.
+
+config RMI4_F34
+	tristate "RMI4 Function 34 (device reflash)"
+	depends on RMI4_CORE
+	help
+	  Say Y here if you want to add support for RMI4 function 34.
+
+	  Function 34 provides firmware upgrade capability for your sensor.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called rmi-f34.
+
+config RMI4_F41
+	tristate "RMI4 Function 41 (active pen)"
+	depends on RMI4_CORE
+	help
+	  Say Y here if you want to add support for RMI4 function 41.
+
+	  Function 41 provides active pen support for active pen enabled sensors.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called rmi-f41.
+
+config RMI4_F54
+	tristate "RMI4 Function 54 (analog diagnostics)"
+	depends on RMI4_CORE
+	help
+	  Say Y here if you want to add support for RMI4 function 54.
+
+	  Function 54 provides access to various diagnostic features in
 	  certain RMI4 touch sensors.
 
-	  This works only if your sensor supports F11 gestures.
+	  To compile this driver as a module, choose M here: the
+	  module will be called rmi-f54.
+
+config RMI4_DEV
+	tristate "Synaptics direct RMI device support (rmidev)"
+	depends on GPIO_SYSFS && (RMI4_I2C || RMI4_SPI)
+	help
+	  Say Y here to add support for rmidev.
+
+	  The rmidev feature implements a character device providing access
+	  to RMI4 sensor register maps.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called rmi-dev.

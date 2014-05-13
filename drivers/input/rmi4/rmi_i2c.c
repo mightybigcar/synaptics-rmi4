@@ -8,90 +8,42 @@
  */
 
 #include <linux/kernel.h>
-#include <linux/debugfs.h>
-#include <linux/delay.h>
 #include <linux/i2c.h>
-#include <linux/interrupt.h>
-#include <linux/kconfig.h>
-#include <linux/lockdep.h>
 #include <linux/module.h>
-#include <linux/pm.h>
 #include <linux/rmi.h>
 #include <linux/slab.h>
-#include <linux/uaccess.h>
 #include "rmi_driver.h"
 
 #define BUFFER_SIZE_INCREMENT 32
 
 /**
- * struct rmi_i2c_data - stores information for i2c communication
+ * struct rmi_i2c_xport - stores information for i2c communication
+ *
+ * @xport: The transport interface structure
  *
  * @page_mutex: Locks current page to avoid changing pages in unexpected ways.
  * @page: Keeps track of the current virtual page
- * @xport: Pointer to the transport interface
  *
  * @tx_buf: Buffer used for transmitting data to the sensor over i2c.
  * @tx_buf_size: Size of the buffer
- * @debug_buf: Buffer used for exposing buffer contents using dev_dbg
- * @debug_buf_size: Size of the debug buffer.
- *
- * @comms_debug: Latest data read/written for debugging I2C communications
- * @debugfs_comms: Debugfs file for debugging I2C communications
- *
  */
-struct rmi_i2c_data {
+struct rmi_i2c_xport {
+	struct rmi_transport_dev xport;
+	struct i2c_client *client;
+
 	struct mutex page_mutex;
 	int page;
-	struct rmi_transport_device *xport;
 
 	u8 *tx_buf;
-	int tx_buf_size;
-	u8 *debug_buf;
-	int debug_buf_size;
-
-	u32 comms_debug;
-#ifdef CONFIG_RMI4_DEBUG
-	struct dentry *debugfs_comms;
-#endif
+	size_t tx_buf_size;
 };
-
-#ifdef CONFIG_RMI4_DEBUG
-
-static int setup_debugfs(struct rmi_device *rmi_dev, struct rmi_i2c_data *data)
-{
-	if (!rmi_dev->debugfs_root)
-		return -ENODEV;
-
-	data->debugfs_comms = debugfs_create_bool("comms_debug", RMI_RW_ATTR,
-			rmi_dev->debugfs_root, &data->comms_debug);
-	if (!data->debugfs_comms || IS_ERR(data->debugfs_comms)) {
-		dev_warn(&rmi_dev->dev, "Failed to create debugfs comms_debug.\n");
-		data->debugfs_comms = NULL;
-	}
-
-	return 0;
-}
-
-static void teardown_debugfs(struct rmi_i2c_data *data)
-{
-	if (data->debugfs_comms)
-		debugfs_remove(data->debugfs_comms);
-}
-#else
-#define setup_debugfs(rmi_dev, data) 0
-#define teardown_debugfs(data)
-#endif
-
-#define COMMS_DEBUG(data) (IS_ENABLED(CONFIG_RMI4_DEBUG) && data->comms_debug)
 
 #define RMI_PAGE_SELECT_REGISTER 0xff
 #define RMI_I2C_PAGE(addr) (((addr) >> 8) & 0xff)
 
-static char *transport_protocol_name = "i2c";
-
 /*
  * rmi_set_page - Set RMI page
- * @xport: The pointer to the rmi_transport_device struct
+ * @xport: The pointer to the rmi_transport_dev struct
  * @page: The new page address.
  *
  * RMI devices have 16-bit addressing, but some of the transport
@@ -103,233 +55,198 @@ static char *transport_protocol_name = "i2c";
  *
  * Returns zero on success, non-zero on failure.
  */
-static int rmi_set_page(struct rmi_transport_device *xport, u8 page)
+static int rmi_set_page(struct rmi_i2c_xport *rmi_i2c, u8 page)
 {
-	struct i2c_client *client = to_i2c_client(xport->dev);
-	struct rmi_i2c_data *data = xport->data;
+	struct i2c_client *client = rmi_i2c->client;
 	u8 txbuf[2] = {RMI_PAGE_SELECT_REGISTER, page};
 	int retval;
 
-	if (COMMS_DEBUG(data))
-		dev_dbg(&client->dev, "writes 3 bytes: %02x %02x\n",
-			txbuf[0], txbuf[1]);
-	xport->info.tx_count++;
-	xport->info.tx_bytes += sizeof(txbuf);
 	retval = i2c_master_send(client, txbuf, sizeof(txbuf));
 	if (retval != sizeof(txbuf)) {
-		xport->info.tx_errs++;
 		dev_err(&client->dev,
 			"%s: set page failed: %d.", __func__, retval);
 		return (retval < 0) ? retval : -EIO;
 	}
-	data->page = page;
+
+	rmi_i2c->page = page;
 	return 0;
 }
 
-static int copy_to_debug_buf(struct device *dev, struct rmi_i2c_data *data,
-			     const u8 *buf, const int len) {
-	int i;
-	int n = 0;
-	char *temp;
-	int dbg_size = 3 * len + 1;
-
-	if (!data->debug_buf || data->debug_buf_size < dbg_size) {
-		if (data->debug_buf)
-			devm_kfree(dev, data->debug_buf);
-		data->debug_buf_size = dbg_size + BUFFER_SIZE_INCREMENT;
-		data->debug_buf = devm_kzalloc(dev, data->debug_buf_size,
-					       GFP_KERNEL);
-		if (!data->debug_buf) {
-			data->debug_buf_size = 0;
-			return -ENOMEM;
-		}
-	}
-	temp = data->debug_buf;
-
-	for (i = 0; i < len; i++) {
-		n = sprintf(temp, " %02x", buf[i]);
-		temp += n;
-	}
-
-	return 0;
-}
-
-static int rmi_i2c_write_block(struct rmi_transport_device *xport, u16 addr,
-			       const void *buf, const int len)
+static int rmi_i2c_write_block(struct rmi_transport_dev *xport, u16 addr,
+			       const void *buf, size_t len)
 {
-	struct i2c_client *client = to_i2c_client(xport->dev);
-	struct rmi_i2c_data *data = xport->data;
+	struct rmi_i2c_xport *rmi_i2c =
+		container_of(xport, struct rmi_i2c_xport, xport);
+	struct i2c_client *client = rmi_i2c->client;
+	size_t tx_size = len + 1;
 	int retval;
-	int tx_size = len + 1;
 
-	mutex_lock(&data->page_mutex);
+	mutex_lock(&rmi_i2c->page_mutex);
 
-	if (!data->tx_buf || data->tx_buf_size < tx_size) {
-		if (data->tx_buf)
-			devm_kfree(&client->dev, data->tx_buf);
-		data->tx_buf_size = tx_size + BUFFER_SIZE_INCREMENT;
-		data->tx_buf = devm_kzalloc(&client->dev, data->tx_buf_size,
-					    GFP_KERNEL);
-		if (!data->tx_buf) {
-			data->tx_buf_size = 0;
+	if (!rmi_i2c->tx_buf || rmi_i2c->tx_buf_size < tx_size) {
+		if (rmi_i2c->tx_buf)
+			devm_kfree(&client->dev, rmi_i2c->tx_buf);
+		rmi_i2c->tx_buf_size = tx_size + BUFFER_SIZE_INCREMENT;
+		rmi_i2c->tx_buf = devm_kzalloc(&client->dev,
+					       rmi_i2c->tx_buf_size,
+					       GFP_KERNEL);
+		if (!rmi_i2c->tx_buf) {
+			rmi_i2c->tx_buf_size = 0;
 			retval = -ENOMEM;
 			goto exit;
 		}
 	}
-	data->tx_buf[0] = addr & 0xff;
-	memcpy(data->tx_buf + 1, buf, len);
 
-	if (RMI_I2C_PAGE(addr) != data->page) {
-		retval = rmi_set_page(xport, RMI_I2C_PAGE(addr));
-		if (retval < 0)
+	rmi_i2c->tx_buf[0] = addr & 0xff;
+	memcpy(rmi_i2c->tx_buf + 1, buf, len);
+
+	if (RMI_I2C_PAGE(addr) != rmi_i2c->page) {
+		retval = rmi_set_page(rmi_i2c, RMI_I2C_PAGE(addr));
+		if (retval)
 			goto exit;
 	}
 
-	if (COMMS_DEBUG(data)) {
-		int rc = copy_to_debug_buf(&client->dev, data, (u8 *) buf, len);
-		if (!rc)
-			dev_dbg(&client->dev, "writes %d bytes at %#06x:%s\n",
-				len, addr, data->debug_buf);
-	}
+	retval = i2c_master_send(client, rmi_i2c->tx_buf, tx_size);
+	if (retval == tx_size)
+		retval = 0;
+	else if (retval >= 0)
+		retval = -EIO;
 
-	xport->info.tx_count++;
-	xport->info.tx_bytes += tx_size;
-	retval = i2c_master_send(client, data->tx_buf, tx_size);
-	if (retval < 0)
-		xport->info.tx_errs++;
+exit:
+	dev_dbg(&client->dev,
+		"write %zd bytes at %#06x: %d (%*ph)\n",
+		len, addr, retval, (int)len, buf);
+
+	xport->stats.tx_count++;
+	if (retval)
+		xport->stats.tx_errs++;
 	else
-		retval--; /* don't count the address byte */
+		xport->stats.tx_bytes += len;
 
-exit:
-	mutex_unlock(&data->page_mutex);
+	mutex_unlock(&rmi_i2c->page_mutex);
 	return retval;
 }
 
-
-static int rmi_i2c_read_block(struct rmi_transport_device *xport, u16 addr,
-			      void *buf, const int len)
+static int rmi_i2c_read_block(struct rmi_transport_dev *xport, u16 addr,
+			      void *buf, size_t len)
 {
-	struct i2c_client *client = to_i2c_client(xport->dev);
-	struct rmi_i2c_data *data = xport->data;
-	u8 txbuf[1] = {addr & 0xff};
+	struct rmi_i2c_xport *rmi_i2c =
+		container_of(xport, struct rmi_i2c_xport, xport);
+	struct i2c_client *client = rmi_i2c->client;
+	u8 addr_offset = addr & 0xff;
 	int retval;
+	struct i2c_msg msgs[] = {
+		{
+			.addr	= client->addr,
+			.len	= sizeof(addr_offset),
+			.buf	= &addr_offset,
+		},
+		{
+			.addr	= client->addr,
+			.flags	= I2C_M_RD,
+			.len	= len,
+			.buf	= buf,
+		},
+	};
 
-	mutex_lock(&data->page_mutex);
+	mutex_lock(&rmi_i2c->page_mutex);
 
-	if (RMI_I2C_PAGE(addr) != data->page) {
-		retval = rmi_set_page(xport, RMI_I2C_PAGE(addr));
-		if (retval < 0)
+	if (RMI_I2C_PAGE(addr) != rmi_i2c->page) {
+		retval = rmi_set_page(rmi_i2c, RMI_I2C_PAGE(addr));
+		if (retval)
 			goto exit;
 	}
 
-	if (COMMS_DEBUG(data))
-		dev_dbg(&client->dev, "writes 1 bytes: %02x\n", txbuf[0]);
-
-	xport->info.tx_count++;
-	xport->info.tx_bytes += sizeof(txbuf);
-	retval = i2c_master_send(client, txbuf, sizeof(txbuf));
-	if (retval != sizeof(txbuf)) {
-		xport->info.tx_errs++;
-		retval = (retval < 0) ? retval : -EIO;
-		goto exit;
-	}
-
-	retval = i2c_master_recv(client, (u8 *) buf, len);
-
-	xport->info.rx_count++;
-	xport->info.rx_bytes += len;
-	if (retval < 0)
-		xport->info.rx_errs++;
-	else if (COMMS_DEBUG(data)) {
-		int rc = copy_to_debug_buf(&client->dev, data, (u8 *) buf, len);
-		if (!rc)
-			dev_dbg(&client->dev, "read %d bytes at %#06x:%s\n",
-				len, addr, data->debug_buf);
-	}
+	retval = i2c_transfer(client->adapter, msgs, ARRAY_SIZE(msgs));
+	if (retval == ARRAY_SIZE(msgs))
+		retval = 0; /* success */
+	else if (retval >= 0)
+		retval = -EIO;
 
 exit:
-	mutex_unlock(&data->page_mutex);
+	dev_dbg(&client->dev,
+		"read %zd bytes at %#06x: %d (%*ph)\n",
+		len, addr, retval, (int)len, buf);
+
+	xport->stats.rx_count++;
+	if (retval < 0)
+		xport->stats.rx_errs++;
+	else
+		xport->stats.rx_bytes += len;
+
+	mutex_unlock(&rmi_i2c->page_mutex);
 	return retval;
 }
+
+static const struct rmi_transport_ops rmi_i2c_ops = {
+	.write_block	= rmi_i2c_write_block,
+	.read_block	= rmi_i2c_read_block,
+};
 
 static int rmi_i2c_probe(struct i2c_client *client,
-				  const struct i2c_device_id *id)
+			 const struct i2c_device_id *id)
 {
-	struct rmi_transport_device *rmi_transport;
-	struct rmi_i2c_data *data;
-	struct rmi_device_platform_data *pdata = client->dev.platform_data;
+	const struct rmi_device_platform_data *pdata =
+				dev_get_platdata(&client->dev);
+	struct rmi_i2c_xport *rmi_i2c;
 	int retval;
 
 	if (!pdata) {
 		dev_err(&client->dev, "no platform data\n");
 		return -EINVAL;
 	}
+
 	dev_dbg(&client->dev, "Probing %s at %#02x (GPIO %d).\n",
 		pdata->sensor_name ? pdata->sensor_name : "-no name-",
 		client->addr, pdata->attn_gpio);
 
-	retval = i2c_check_functionality(client->adapter, I2C_FUNC_I2C);
-	if (!retval) {
-		dev_err(&client->dev, "i2c_check_functionality error %d.\n",
-			retval);
-		return retval;
+	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
+		dev_err(&client->dev,
+			"adapter does not support required functionality.\n");
+		return -ENODEV;
 	}
 
 	if (pdata->gpio_config) {
-		dev_dbg(&client->dev, "Configuring GPIOs.\n");
 		retval = pdata->gpio_config(pdata->gpio_data, true);
 		if (retval < 0) {
 			dev_err(&client->dev, "Failed to configure GPIOs, code: %d.\n",
 				retval);
 			return retval;
 		}
-		mdelay(pdata->reset_delay_ms ? pdata->reset_delay_ms : DEFAULT_RESET_DELAY_MS);
-		dev_info(&client->dev, "Done with GPIO configuration.\n");
+	} else {
+		dev_warn(&client->dev, "No gpio_config().\n");
 	}
 
-	rmi_transport = devm_kzalloc(&client->dev, sizeof(struct rmi_transport_device),
+	rmi_i2c = devm_kzalloc(&client->dev, sizeof(struct rmi_i2c_xport),
 				GFP_KERNEL);
-
-	if (!rmi_transport)
+	if (!rmi_i2c)
 		return -ENOMEM;
 
-	data = devm_kzalloc(&client->dev, sizeof(struct rmi_i2c_data),
-				GFP_KERNEL);
-	if (!data)
-		return -ENOMEM;
+	rmi_i2c->client = client;
+	mutex_init(&rmi_i2c->page_mutex);
 
-	data->xport = rmi_transport;
+	rmi_i2c->xport.dev = &client->dev;
+	rmi_i2c->xport.proto_name = "i2c";
+	rmi_i2c->xport.ops = &rmi_i2c_ops;
 
-	rmi_transport->data = data;
-	rmi_transport->dev = &client->dev;
-
-	rmi_transport->write_block = rmi_i2c_write_block;
-	rmi_transport->read_block = rmi_i2c_read_block;
-	rmi_transport->info.proto = transport_protocol_name;
-
-	mutex_init(&data->page_mutex);
-
-	/* Setting the page to zero will (a) make sure the PSR is in a
+	/*
+	 * Setting the page to zero will (a) make sure the PSR is in a
 	 * known state, and (b) make sure we can talk to the device.
 	 */
-	retval = rmi_set_page(rmi_transport, 0);
+	retval = rmi_set_page(rmi_i2c, 0);
 	if (retval) {
 		dev_err(&client->dev, "Failed to set page select to 0.\n");
 		return retval;
 	}
 
-	retval = rmi_register_transport_device(rmi_transport);
+	retval = rmi_register_transport_device(&rmi_i2c->xport);
 	if (retval) {
-		dev_err(&client->dev, "Failed to register transport at 0x%.2X.\n",
+		dev_err(&client->dev, "Failed to register transport driver at 0x%.2X.\n",
 			client->addr);
 		goto err_gpio;
 	}
-	i2c_set_clientdata(client, rmi_transport);
 
-	retval = setup_debugfs(rmi_transport->rmi_dev, data);
-	if (retval < 0)
-		dev_warn(&client->dev, "Failed to setup debugfs. Code: %d.\n",
-			 retval);
+	i2c_set_clientdata(client, rmi_i2c);
 
 	dev_info(&client->dev, "registered rmi i2c driver at %#04x.\n",
 			client->addr);
@@ -338,20 +255,20 @@ static int rmi_i2c_probe(struct i2c_client *client,
 err_gpio:
 	if (pdata->gpio_config)
 		pdata->gpio_config(pdata->gpio_data, false);
+
 	return retval;
 }
 
 static int rmi_i2c_remove(struct i2c_client *client)
 {
-	struct rmi_transport_device *xport = i2c_get_clientdata(client);
-	struct rmi_device_platform_data *pd = client->dev.platform_data;
+	const struct rmi_device_platform_data *pdata =
+				dev_get_platdata(&client->dev);
+	struct rmi_i2c_xport *rmi_i2c = i2c_get_clientdata(client);
 
-	teardown_debugfs(xport->data);
+	rmi_unregister_transport_device(&rmi_i2c->xport);
 
-	rmi_unregister_transport_device(xport);
-
-	if (pd->gpio_config)
-		pd->gpio_config(&pd->gpio_data, false);
+	if (pdata->gpio_config)
+		pdata->gpio_config(pdata->gpio_data, false);
 
 	return 0;
 }

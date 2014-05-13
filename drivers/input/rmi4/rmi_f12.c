@@ -293,7 +293,7 @@ static void rmi_dump_descriptor(struct rmi_function *fn,
 				char* desc_name)
 {
 	int reg;
-	
+
 	dev_dbg(&fn->dev, "F%02X %s has %d presence bits.\n", fn->fd.function_number, desc_name, desc->presence_bits);
 	for (reg = 0; reg < desc->presence_bits; reg++) {
 		dev_dbg(&fn->dev, "F%02X %s%02d - present: %d.\n", fn->fd.function_number, desc_name, reg, rmi_has_register(desc, reg));
@@ -546,7 +546,7 @@ static int rmi_f12_attention(struct rmi_function *fn,
 	return 0;
 }
 
-static int rmi_f12_remove(struct rmi_function *fn)
+static void rmi_f12_remove(struct rmi_function *fn)
 {
 	struct f12_data *f12 = fn->data;
 
@@ -554,8 +554,6 @@ static int rmi_f12_remove(struct rmi_function *fn)
 	devm_kfree(&fn->dev, f12->object_buf);
 	devm_kfree(&fn->dev, f12);
 	fn->data = NULL;
-
-	return 0;
 }
 
 static int rmi_f12_probe(struct rmi_function *fn)
@@ -565,7 +563,7 @@ static int rmi_f12_probe(struct rmi_function *fn)
 	struct input_dev *input_dev;
 	struct rmi_device *rmi_dev = fn->rmi_dev;
 	struct rmi_driver *driver = rmi_dev->driver;
-	
+
 	dev_dbg(&fn->dev, "%s called.\n", __func__);
 
 	f12 = devm_kzalloc(&fn->dev, sizeof(struct f12_data), GFP_KERNEL);
@@ -597,7 +595,7 @@ static int rmi_f12_probe(struct rmi_function *fn)
 		retval = -ENODEV;
 		goto error_free_data;
 	}
-	
+
 	if (rmi_has_register(&f12->desc.control, F12_REPORT_ENABLES_REG)) {
 		u16 addr = fn->fd.control_base_addr + rmi_register_offset(&f12->desc.control, F12_REPORT_ENABLES_REG);
 		u8 enables = F12_REPORT_DEFAULT;
@@ -679,7 +677,7 @@ error_free_data:
 	return retval;
 }
 
-static struct rmi_function_driver function_driver = {
+static struct rmi_function_handler function_handler = {
 	.driver = {
 		.name = "rmi_f12",
 	},
@@ -689,7 +687,7 @@ static struct rmi_function_driver function_driver = {
 	.attention = rmi_f12_attention,
 };
 
-module_rmi_function_driver(function_driver);
+module_rmi_driver(function_handler);
 
 MODULE_AUTHOR("Christopher Heiny <cheiny@synaptics.com");
 MODULE_DESCRIPTION("F12 2D pointing");

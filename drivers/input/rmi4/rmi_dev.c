@@ -224,14 +224,16 @@ static int rmidev_open(struct inode *inp, struct file *filp)
 {
 	struct rmidev_data *data = container_of(inp->i_cdev,
 			struct rmidev_data, main_dev);
+	struct rmi_device *rmi_dev;
 	int retval = 0;
 
 	filp->private_data = data;
 
 	if (!data->rmi_dev)
 		return -EACCES;
+	rmi_dev = data->rmi_dev;
 
-	dev_dbg(&data->rmi_dev->dev, "%s.", __func__);
+	dev_dbg(&rmi_dev->dev, "%s.", __func__);
 
 	mutex_lock(&(data->file_mutex));
 	if (data->ref_count < 1)
@@ -242,7 +244,7 @@ static int rmidev_open(struct inode *inp, struct file *filp)
 	}
 	mutex_unlock(&(data->file_mutex));
 
-	data->rmi_dev->driver->disable(data->rmi_dev);
+	rmi_dev->xport->ops->disable_device(rmi_dev->xport);
 
 	return retval;
 }
@@ -258,15 +260,17 @@ static int rmidev_release(struct inode *inp, struct file *filp)
 {
 	struct rmidev_data *data = container_of(inp->i_cdev,
 			struct rmidev_data, main_dev);
+	struct rmi_device *rmi_dev;
 	int retval;
 
 	if (!data->rmi_dev)
 		return -EACCES;
+	rmi_dev = data->rmi_dev;
 
-	dev_dbg(&data->rmi_dev->dev, "%s.", __func__);
+	dev_dbg(&rmi_dev->dev, "%s.", __func__);
 
-	retval = data->rmi_dev->driver->enable(data->rmi_dev);
-	dev_warn(&data->rmi_dev->dev, "Failed to enable sensor, code: %d.\n",
+	retval = rmi_dev->xport->ops->enable_device(rmi_dev->xport);
+	dev_warn(&rmi_dev->dev, "Failed to enable sensor, code: %d.\n",
 		 retval);
 
 	mutex_lock(&(data->file_mutex));
